@@ -9,7 +9,7 @@ training:
 
 data:
   ## mnist
-  dataset: "MNIST"
+  dataset: "pushT"
   image_size: 28
   channels: 1
   logit_transform: false

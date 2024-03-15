@@ -18,8 +18,15 @@ from torchvision.utils import save_image, make_grid
 from PIL import Image
 
 # Assuming that motion_ncsn is a submodule in the algo directory
-from ....custom_envs.motion_lib import MotionLib
-motion_file = "/thesis_background/diffusion_motion_priors/isaacgym/custom_envs/data/pusht/pusht_cchi_v7_replay.zarr"
+import sys
+import os
+MOTION_LIB_PATH = os.path.join(os.path.dirname(__file__),
+                               '../../../custom_envs')
+sys.path.append(MOTION_LIB_PATH)
+
+from motion_lib import MotionLib
+from models.motion_scorenet import DummyNet
+motion_file = MOTION_LIB_PATH + "/data/pusht/pusht_cchi_v7_replay.zarr"
 # Sample motion sets with each set having num_obs_steps motions. For example, if num_obs_steps = 2 then sample s,s' pairs. 
 # In this case s' is the generated data while s is the conditioning vector
 num_obs_steps = 2
@@ -50,47 +57,21 @@ class AnnealRunner():
         return torch.log(image) - torch.log1p(-image)
 
     def train(self):
-        # if self.config.data.random_flip is False:
-        #     tran_transform = test_transform = transforms.Compose([
-        #         transforms.Resize(self.config.data.image_size),
-        #         transforms.ToTensor()
-        #     ])
-        # else:
-        #     tran_transform = transforms.Compose([
-        #         transforms.Resize(self.config.data.image_size),
-        #         transforms.RandomHorizontalFlip(p=0.5),
-        #         transforms.ToTensor()
-        #     ])
-        #     test_transform = transforms.Compose([
-        #         transforms.Resize(self.config.data.image_size),
-        #         transforms.ToTensor()
-        #     ])
-
-        # if self.config.data.dataset == 'MNIST':
-        #     dataset = MNIST(os.path.join(self.args.run, 'datasets', 'mnist'), train=True, download=True,
-        #                     transform=tran_transform)
-        #     test_dataset = MNIST(os.path.join(self.args.run, 'datasets', 'mnist_test'), train=False, download=True,
-        #                          transform=test_transform)
-
-        #     dataloader = DataLoader(dataset, batch_size=self.config.training.batch_size, shuffle=True, num_workers=4)
-        #     test_loader = DataLoader(test_dataset, batch_size=self.config.training.batch_size, shuffle=True,
-        #                             num_workers=4, drop_last=True)
 
         if self.config.data.dataset == 'pushT':
             motion_lib = MotionLib(motion_file, num_obs_steps, num_obs_per_step, episodic=False)
             dataloader = motion_lib.get_traj_agnostic_dataloader(batch_size=self.config.training.batch_size, shuffle=True)
             test_loader = dataloader
 
-        # test_iter = iter(test_loader)
-        # self.config.input_dim = self.config.data.image_size ** 2 * self.config.data.channels
+        test_iter = iter(test_loader)
         self.config.input_dim = num_obs_per_step
-
+        
         tb_path = os.path.join(self.args.run, 'tensorboard', self.args.doc)
         if os.path.exists(tb_path):
             shutil.rmtree(tb_path)
 
         tb_logger = tensorboardX.SummaryWriter(log_dir=tb_path)
-        score = CondRefineNetDilated(self.config).to(self.config.device)
+        score = DummyNet(self.config).to(self.config.device)
 
         score = torch.nn.DataParallel(score)
 
@@ -118,10 +99,11 @@ class AnnealRunner():
 
 
         for epoch in range(self.config.training.n_epochs):
-            for i, (X, y) in enumerate(dataloader):
-                print(X.shape)
-                print(y.shape)
-                quit()
+            for i, motion in enumerate(dataloader):
+                # Separate sample into X and conditioning
+                X = motion[:, 5:]
+                y = motion[:, :5]
+
                 step += 1
                 score.train()
                 X = X.to(self.config.device)
@@ -149,10 +131,14 @@ class AnnealRunner():
                 if step % 100 == 0:
                     score.eval()
                     try:
-                        test_X, test_y = next(test_iter)
+                        motion = next(test_iter)
+                        test_X = motion[:, 5:]
+                        test_y = motion[:, :5]
                     except StopIteration:
                         test_iter = iter(test_loader)
-                        test_X, test_y = next(test_iter)
+                        motion = next(test_iter)
+                        test_X = motion[:, 5:]
+                        test_y = motion[:, :5]
 
                     test_X = test_X.to(self.config.device)
                     test_X = test_X / 256. * 255. + torch.rand_like(test_X) / 256.
