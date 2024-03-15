@@ -17,6 +17,15 @@ from models.cond_refinenet_dilated import CondRefineNetDilated
 from torchvision.utils import save_image, make_grid
 from PIL import Image
 
+# Assuming that motion_ncsn is a submodule in the algo directory
+from ....custom_envs.motion_lib import MotionLib
+motion_file = "/thesis_background/diffusion_motion_priors/isaacgym/custom_envs/data/pusht/pusht_cchi_v7_replay.zarr"
+# Sample motion sets with each set having num_obs_steps motions. For example, if num_obs_steps = 2 then sample s,s' pairs. 
+# In this case s' is the generated data while s is the conditioning vector
+num_obs_steps = 2
+# Number of features per observation
+num_obs_per_step = 5
+
 __all__ = ['AnnealRunner']
 
 
@@ -41,34 +50,40 @@ class AnnealRunner():
         return torch.log(image) - torch.log1p(-image)
 
     def train(self):
-        if self.config.data.random_flip is False:
-            tran_transform = test_transform = transforms.Compose([
-                transforms.Resize(self.config.data.image_size),
-                transforms.ToTensor()
-            ])
-        else:
-            tran_transform = transforms.Compose([
-                transforms.Resize(self.config.data.image_size),
-                transforms.RandomHorizontalFlip(p=0.5),
-                transforms.ToTensor()
-            ])
-            test_transform = transforms.Compose([
-                transforms.Resize(self.config.data.image_size),
-                transforms.ToTensor()
-            ])
+        # if self.config.data.random_flip is False:
+        #     tran_transform = test_transform = transforms.Compose([
+        #         transforms.Resize(self.config.data.image_size),
+        #         transforms.ToTensor()
+        #     ])
+        # else:
+        #     tran_transform = transforms.Compose([
+        #         transforms.Resize(self.config.data.image_size),
+        #         transforms.RandomHorizontalFlip(p=0.5),
+        #         transforms.ToTensor()
+        #     ])
+        #     test_transform = transforms.Compose([
+        #         transforms.Resize(self.config.data.image_size),
+        #         transforms.ToTensor()
+        #     ])
 
-        if self.config.data.dataset == 'MNIST':
-            dataset = MNIST(os.path.join(self.args.run, 'datasets', 'mnist'), train=True, download=True,
-                            transform=tran_transform)
-            test_dataset = MNIST(os.path.join(self.args.run, 'datasets', 'mnist_test'), train=False, download=True,
-                                 transform=test_transform)
+        # if self.config.data.dataset == 'MNIST':
+        #     dataset = MNIST(os.path.join(self.args.run, 'datasets', 'mnist'), train=True, download=True,
+        #                     transform=tran_transform)
+        #     test_dataset = MNIST(os.path.join(self.args.run, 'datasets', 'mnist_test'), train=False, download=True,
+        #                          transform=test_transform)
 
-        dataloader = DataLoader(dataset, batch_size=self.config.training.batch_size, shuffle=True, num_workers=4)
-        test_loader = DataLoader(test_dataset, batch_size=self.config.training.batch_size, shuffle=True,
-                                 num_workers=4, drop_last=True)
+        #     dataloader = DataLoader(dataset, batch_size=self.config.training.batch_size, shuffle=True, num_workers=4)
+        #     test_loader = DataLoader(test_dataset, batch_size=self.config.training.batch_size, shuffle=True,
+        #                             num_workers=4, drop_last=True)
 
-        test_iter = iter(test_loader)
-        self.config.input_dim = self.config.data.image_size ** 2 * self.config.data.channels
+        if self.config.data.dataset == 'pushT':
+            motion_lib = MotionLib(motion_file, num_obs_steps, num_obs_per_step, episodic=False)
+            dataloader = motion_lib.get_traj_agnostic_dataloader(batch_size=self.config.training.batch_size, shuffle=True)
+            test_loader = dataloader
+
+        # test_iter = iter(test_loader)
+        # self.config.input_dim = self.config.data.image_size ** 2 * self.config.data.channels
+        self.config.input_dim = num_obs_per_step
 
         tb_path = os.path.join(self.args.run, 'tensorboard', self.args.doc)
         if os.path.exists(tb_path):
@@ -104,6 +119,9 @@ class AnnealRunner():
 
         for epoch in range(self.config.training.n_epochs):
             for i, (X, y) in enumerate(dataloader):
+                print(X.shape)
+                print(y.shape)
+                quit()
                 step += 1
                 score.train()
                 X = X.to(self.config.device)
