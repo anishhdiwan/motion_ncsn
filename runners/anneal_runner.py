@@ -57,46 +57,11 @@ class AnnealRunner():
                 transforms.ToTensor()
             ])
 
-        if self.config.data.dataset == 'CIFAR10':
-            dataset = CIFAR10(os.path.join(self.args.run, 'datasets', 'cifar10'), train=True, download=True,
-                              transform=tran_transform)
-            test_dataset = CIFAR10(os.path.join(self.args.run, 'datasets', 'cifar10_test'), train=False, download=True,
-                                   transform=test_transform)
-        elif self.config.data.dataset == 'MNIST':
+        if self.config.data.dataset == 'MNIST':
             dataset = MNIST(os.path.join(self.args.run, 'datasets', 'mnist'), train=True, download=True,
                             transform=tran_transform)
             test_dataset = MNIST(os.path.join(self.args.run, 'datasets', 'mnist_test'), train=False, download=True,
                                  transform=test_transform)
-
-        elif self.config.data.dataset == 'CELEBA':
-            if self.config.data.random_flip:
-                dataset = CelebA(root=os.path.join(self.args.run, 'datasets', 'celeba'), split='train',
-                                 transform=transforms.Compose([
-                                     transforms.CenterCrop(140),
-                                     transforms.Resize(self.config.data.image_size),
-                                     transforms.RandomHorizontalFlip(),
-                                     transforms.ToTensor(),
-                                 ]), download=True)
-            else:
-                dataset = CelebA(root=os.path.join(self.args.run, 'datasets', 'celeba'), split='train',
-                                 transform=transforms.Compose([
-                                     transforms.CenterCrop(140),
-                                     transforms.Resize(self.config.data.image_size),
-                                     transforms.ToTensor(),
-                                 ]), download=True)
-
-            test_dataset = CelebA(root=os.path.join(self.args.run, 'datasets', 'celeba_test'), split='test',
-                                  transform=transforms.Compose([
-                                      transforms.CenterCrop(140),
-                                      transforms.Resize(self.config.data.image_size),
-                                      transforms.ToTensor(),
-                                  ]), download=True)
-
-        elif self.config.data.dataset == 'SVHN':
-            dataset = SVHN(os.path.join(self.args.run, 'datasets', 'svhn'), split='train', download=True,
-                           transform=tran_transform)
-            test_dataset = SVHN(os.path.join(self.args.run, 'datasets', 'svhn_test'), split='test', download=True,
-                                transform=test_transform)
 
         dataloader = DataLoader(dataset, batch_size=self.config.training.batch_size, shuffle=True, num_workers=4)
         test_loader = DataLoader(test_dataset, batch_size=self.config.training.batch_size, shuffle=True,
@@ -126,6 +91,15 @@ class AnnealRunner():
         sigmas = torch.tensor(
             np.exp(np.linspace(np.log(self.config.model.sigma_begin), np.log(self.config.model.sigma_end),
                                self.config.model.num_classes))).float().to(self.config.device)
+
+    
+        ### TESTING ###
+        # print(f"Dataloader outputs {next(iter(dataloader))}")
+        # print(f"Dataloader outputs Y shape {next(iter(dataloader))[1].shape}")
+        # print(f"Dataloader outputs X shape {next(iter(dataloader))[0].shape}")
+        # quit()
+        ### TESTING ###
+        
 
 
         for epoch in range(self.config.training.n_epochs):
