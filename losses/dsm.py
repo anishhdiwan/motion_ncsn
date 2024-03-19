@@ -28,11 +28,11 @@ def dsm_score_estimation(scorenet, samples, sigma=0.01):
 
 def anneal_dsm_score_estimation(scorenet, samples, labels, sigmas, anneal_power=2., grad=True):
     samples.requires_grad = True
-    labels.requires_grad = True
-    sigma_labels = torch.randint(0, len(sigmas), (samples.shape[0],), device=samples.device)
-    used_sigmas = sigmas[sigma_labels].view(samples.shape[0], *([1] * len(samples.shape[1:])))
+
+    used_sigmas = sigmas[labels].view(samples.shape[0], *([1] * len(samples.shape[1:])))    
     perturbed_samples = samples + torch.randn_like(samples) * used_sigmas
     target = - 1 / (used_sigmas ** 2) * (perturbed_samples - samples)
+
     # Default NCSN
     # scores = scorenet(perturbed_samples, labels)
 

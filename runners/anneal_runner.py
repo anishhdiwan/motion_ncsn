@@ -59,7 +59,7 @@ class AnnealRunner():
     def train(self):
 
         if self.config.data.dataset == 'pushT':
-            motion_lib = MotionLib(motion_file, num_obs_steps, num_obs_per_step, episodic=False)
+            motion_lib = MotionLib(motion_file, num_obs_steps, num_obs_per_step, episodic=False, normalize=True)
             dataloader = motion_lib.get_traj_agnostic_dataloader(batch_size=self.config.training.batch_size, shuffle=True)
             test_loader = dataloader
 
@@ -101,20 +101,17 @@ class AnnealRunner():
 
         for epoch in range(self.config.training.n_epochs):
             avg_loss = 0
-            for i, motion in enumerate(dataloader):
-                # Separate sample into X and conditioning
-                X = motion[:, 5:]
-                y = motion[:, :5]
+            for i, X in enumerate(dataloader): 
 
                 step += 1
                 score.train()
                 X = X.to(self.config.device)
-                X = X / 256. * 255. + torch.rand_like(X) / 256.
+                # X = X / 256. * 255. + torch.rand_like(X) / 256.
                 if self.config.data.logit_transform:
                     X = self.logit_transform(X)
 
-                # labels = torch.randint(0, len(sigmas), (X.shape[0],), device=X.device)
-                labels = y.to(X.device)
+                labels = torch.randint(0, len(sigmas), (X.shape[0],), device=X.device)
+                # labels = y.to(X.device)
 
                 if self.config.training.algo == 'dsm':
                     loss = anneal_dsm_score_estimation(score, X, labels, sigmas, self.config.training.anneal_power)
@@ -136,22 +133,18 @@ class AnnealRunner():
                 if step % 100 == 0:
                     score.eval()
                     try:
-                        motion = next(test_iter)
-                        test_X = motion[:, 5:]
-                        test_y = motion[:, :5]
+                        test_X = next(test_iter)
                     except StopIteration:
                         test_iter = iter(test_loader)
-                        motion = next(test_iter)
-                        test_X = motion[:, 5:]
-                        test_y = motion[:, :5]
+                        test_X = next(test_iter)
 
                     test_X = test_X.to(self.config.device)
-                    test_X = test_X / 256. * 255. + torch.rand_like(test_X) / 256.
+                    # test_X = test_X / 256. * 255. + torch.rand_like(test_X) / 256.
                     if self.config.data.logit_transform:
                         test_X = self.logit_transform(test_X)
 
-                    # test_labels = torch.randint(0, len(sigmas), (test_X.shape[0],), device=test_X.device)
-                    test_labels = test_y.to(test_X.device)
+                    test_labels = torch.randint(0, len(sigmas), (test_X.shape[0],), device=test_X.device)
+                    # test_labels = test_y.to(test_X.device)
 
                     # with torch.no_grad():
                     # Instead of setting no_grad, explicitly compute scores as gradients without adding to the graph

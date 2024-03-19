@@ -1,5 +1,5 @@
 training:
-  batch_size: 128
+  batch_size: 64
   n_epochs: 500000
   n_iters: 200001
   ngpu: 1
@@ -15,18 +15,17 @@ data:
 model:
   sigma_begin: 1
   sigma_end: 0.01
-  L: 5
-  in_dim: 5
-  cond_dim: 5
-  encoder_hidden_layers: [128, 256, 512]  
+  L: 3
+  in_dim: 10
+  encoder_hidden_layers: [265, 512]  
   latent_space_dim: 1024
-  decoder_hidden_layers: [512, 256, 128, 32]
+  decoder_hidden_layers: [512, 256]
 # The out dim is set to 1 internally (out_dim: 1)   
-  batch_norm: True
+
 
 optim:
   weight_decay: 0.000
   optimizer: "Adam"
-  lr: 0.001
+  lr: 0.0001
   beta1: 0.9
   amsgrad: false

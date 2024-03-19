@@ -3,6 +3,58 @@ import torch.nn.functional as F
 import torch
 from functools import partial
 
+
+class ConditionalBatchNorm1d(nn.Module):
+    def __init__(self, num_features, L, bias=True):
+        super().__init__()
+        self.num_features = num_features
+        self.bias = bias
+        self.bn = nn.BatchNorm1d(num_features, affine=False)
+        if self.bias:
+            self.embed = nn.Embedding(L, num_features * 2)
+            self.embed.weight.data[:, :num_features].uniform_()  # Initialise scale at N(1, 0.02)
+            self.embed.weight.data[:, num_features:].zero_()  # Initialise bias at 0
+        else:
+            self.embed = nn.Embedding(L, num_features)
+            self.embed.weight.data.uniform_()
+
+    def forward(self, x, y):
+        out = self.bn(x)
+        if self.bias:
+            gamma, beta = self.embed(y).chunk(2, dim=1)
+            out = gamma.view(-1, self.num_features) * out + beta.view(-1, self.num_features)
+        else:
+            gamma = self.embed(y)
+            out = gamma.view(-1, self.num_features) * out
+        
+        return out
+
+
+class ConditionalInstanceNorm1d(nn.Module):
+    def __init__(self, num_features, L, bias=True):
+        super().__init__()
+        self.num_features = num_features
+        self.bias = bias
+        self.instance_norm = nn.InstanceNorm1d(num_features, affine=False, track_running_stats=False)
+        if bias:
+            self.embed = nn.Embedding(L, num_features * 2)
+            self.embed.weight.data[:, :num_features].uniform_()  # Initialise scale at N(1, 0.02)
+            self.embed.weight.data[:, num_features:].zero_()  # Initialise bias at 0
+        else:
+            self.embed = nn.Embedding(L, num_features)
+            self.embed.weight.data.uniform_()
+
+    def forward(self, x, y):
+        h = self.instance_norm(x)
+        if self.bias:
+            gamma, beta = self.embed(y).chunk(2, dim=-1)
+            out = gamma.view(-1, self.num_features) * h + beta.view(-1, self.num_features)
+        else:
+            gamma = self.embed(y)
+            out = gamma.view(-1, self.num_features) * h
+
+        return out
+
 class LatentSpaceTf(nn.Module):
     """
     Encode/decode features into a latent space or from a latent space
@@ -27,7 +79,7 @@ class LatentSpaceTf(nn.Module):
         for i in range(len(self.layers) - 1):        
             modules.append(nn.Linear(self.layers[i], self.layers[i+1]))
             if i != (len(self.layers) - 2):
-                modules.append(nn.ReLU())
+                modules.append(nn.ELU())
 
         self.encoder = nn.Sequential(*modules)
 
@@ -84,37 +136,27 @@ class EnergyNet(nn.Module):
     def __init__(self, config):
         super().__init__()
         in_dim = config.model.in_dim
-        cond_dim = config.model.cond_dim
+        # cond_dim = config.model.cond_dim
         encoder_hidden_layers = config.model.encoder_hidden_layers
         latent_space_dim = config.model.latent_space_dim
         decoder_hidden_layers = config.model.decoder_hidden_layers
-        self.batch_norm = config.model.batch_norm
+        # L = number of sigma levels
+        self.L = config.model.L
 
+        self.conditionalBN = ConditionalBatchNorm1d(num_features=in_dim, L=self.L)
         self.encoder = LatentSpaceTf(in_dim, encoder_hidden_layers, latent_space_dim)
-        self.film_encoder = FiLMEmbeddings(latent_space_dim, cond_dim=latent_space_dim)
-        self.batch_norm = nn.BatchNorm1d(latent_space_dim)
-        self.decoder = nn.Sequential(*[LatentSpaceTf(latent_space_dim, decoder_hidden_layers, 1), nn.Sigmoid()])
+        self.conditional_instance_norm = ConditionalInstanceNorm1d(num_features=latent_space_dim, L=self.L)
+        self.decoder = nn.Sequential(*[LatentSpaceTf(latent_space_dim, decoder_hidden_layers, 1), nn.ELU()])
 
 
     def forward(self, x, cond):
-        # print(f"input shape {x.shape}")
-        # print(f"cond shape {cond.shape}")
-        encoded_input = self.encoder(x)
-        encoded_cond = self.encoder(cond)
-        # print(f"encoded input shape {encoded_input.shape}")
-        # print(f"encoded cond shape {encoded_cond.shape}")
-        # conditioned input
-        cond_input = self.film_encoder(encoded_input, encoded_cond)
-        # print(f"conditioned input shape {cond_input.shape}")
-        if self.batch_norm:
-            cond_input = self.batch_norm(cond_input)
-            # print(f"B norm cond input shape {cond_input.shape}")
-        
-        energy = self.decoder(cond_input)
-        # print(f"energy shape {energy.shape}")
+        out = self.conditionalBN(x, cond)
+        out = self.encoder(out)
+        out = self.conditional_instance_norm(out, cond)
+        energy = self.decoder(out)
+
         
         return energy
-
 
 
 
