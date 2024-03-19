@@ -25,7 +25,7 @@ MOTION_LIB_PATH = os.path.join(os.path.dirname(__file__),
 sys.path.append(MOTION_LIB_PATH)
 
 from motion_lib import MotionLib
-from models.motion_scorenet import DummyNet
+from models.motion_scorenet import EnergyNet
 motion_file = MOTION_LIB_PATH + "/data/pusht/pusht_cchi_v7_replay.zarr"
 # Sample motion sets with each set having num_obs_steps motions. For example, if num_obs_steps = 2 then sample s,s' pairs. 
 # In this case s' is the generated data while s is the conditioning vector
@@ -71,7 +71,8 @@ class AnnealRunner():
             shutil.rmtree(tb_path)
 
         tb_logger = tensorboardX.SummaryWriter(log_dir=tb_path)
-        score = DummyNet(self.config).to(self.config.device)
+        # score = DummyNet(self.config).to(self.config.device)
+        score = EnergyNet(self.config).to(self.config.device)
 
         score = torch.nn.DataParallel(score)
 
@@ -86,7 +87,7 @@ class AnnealRunner():
 
         sigmas = torch.tensor(
             np.exp(np.linspace(np.log(self.config.model.sigma_begin), np.log(self.config.model.sigma_end),
-                               self.config.model.num_classes))).float().to(self.config.device)
+                               self.config.model.L))).float().to(self.config.device)
 
     
         ### TESTING ###
@@ -99,6 +100,7 @@ class AnnealRunner():
 
 
         for epoch in range(self.config.training.n_epochs):
+            avg_loss = 0
             for i, motion in enumerate(dataloader):
                 # Separate sample into X and conditioning
                 X = motion[:, 5:]
@@ -111,7 +113,9 @@ class AnnealRunner():
                 if self.config.data.logit_transform:
                     X = self.logit_transform(X)
 
-                labels = torch.randint(0, len(sigmas), (X.shape[0],), device=X.device)
+                # labels = torch.randint(0, len(sigmas), (X.shape[0],), device=X.device)
+                labels = y.to(X.device)
+
                 if self.config.training.algo == 'dsm':
                     loss = anneal_dsm_score_estimation(score, X, labels, sigmas, self.config.training.anneal_power)
                 elif self.config.training.algo == 'ssm':
@@ -123,7 +127,8 @@ class AnnealRunner():
                 optimizer.step()
 
                 tb_logger.add_scalar('loss', loss, global_step=step)
-                logging.info("step: {}, loss: {}".format(step, loss.item()))
+                avg_loss += loss.item()
+                # logging.info("step: {}, loss: {}".format(step, loss.item()))
 
                 if step >= self.config.training.n_iters:
                     return 0
@@ -145,11 +150,13 @@ class AnnealRunner():
                     if self.config.data.logit_transform:
                         test_X = self.logit_transform(test_X)
 
-                    test_labels = torch.randint(0, len(sigmas), (test_X.shape[0],), device=test_X.device)
+                    # test_labels = torch.randint(0, len(sigmas), (test_X.shape[0],), device=test_X.device)
+                    test_labels = test_y.to(test_X.device)
 
-                    with torch.no_grad():
-                        test_dsm_loss = anneal_dsm_score_estimation(score, test_X, test_labels, sigmas,
-                                                                    self.config.training.anneal_power)
+                    # with torch.no_grad():
+                    # Instead of setting no_grad, explicitly compute scores as gradients without adding to the graph
+                    test_dsm_loss = anneal_dsm_score_estimation(score, test_X, test_labels, sigmas,
+                                                                    self.config.training.anneal_power, grad=False)
 
                     tb_logger.add_scalar('test_dsm_loss', test_dsm_loss, global_step=step)
 
@@ -160,6 +167,8 @@ class AnnealRunner():
                     ]
                     torch.save(states, os.path.join(self.args.log, 'checkpoint_{}.pth'.format(step)))
                     torch.save(states, os.path.join(self.args.log, 'checkpoint.pth'))
+
+            logging.info(f"Epoch {epoch} Avg Loss: {avg_loss/len(dataloader)}")
 
     def Langevin_dynamics(self, x_mod, scorenet, n_steps=200, step_lr=0.00005):
         images = []
@@ -208,7 +217,7 @@ class AnnealRunner():
             os.makedirs(self.args.image_folder)
 
         sigmas = np.exp(np.linspace(np.log(self.config.model.sigma_begin), np.log(self.config.model.sigma_end),
-                                    self.config.model.num_classes))
+                                    self.config.model.L))
 
         score.eval()
         grid_size = 5
@@ -294,7 +303,7 @@ class AnnealRunner():
             os.makedirs(self.args.image_folder)
 
         sigmas = np.exp(np.linspace(np.log(self.config.model.sigma_begin), np.log(self.config.model.sigma_end),
-                                    self.config.model.num_classes))
+                                    self.config.model.L))
         score.eval()
 
         imgs = []
