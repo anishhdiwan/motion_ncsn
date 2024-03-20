@@ -2,7 +2,23 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch
 from functools import partial
+import math
 
+class SinusoidalPosEmb(nn.Module):
+    def __init__(self, dim, steps=100):
+        super().__init__()
+        self.dim = dim
+        self.steps = steps
+
+    def forward(self, x):
+        x = self.steps * x
+        device = x.device
+        half_dim = self.dim // 2
+        emb = math.log(10000) / (half_dim - 1)
+        emb = torch.exp(torch.arange(half_dim, device=device) * -emb)
+        emb = x[:, None] * emb[None, :]
+        emb = torch.cat((emb.sin(), emb.cos()), dim=-1)
+        return emb
 
 class ConditionalBatchNorm1d(nn.Module):
     def __init__(self, num_features, L, bias=True):
@@ -153,6 +169,49 @@ class EnergyNet(nn.Module):
         out = self.conditionalBN(x, cond)
         out = self.encoder(out)
         out = self.conditional_instance_norm(out, cond)
+        energy = self.decoder(out)
+
+        
+        return energy
+
+
+
+
+class SimpleNet(nn.Module):
+    """
+    Encode an input and conditioning vector to extract features, apply FiLM conditioning to the input, and then decode the latent space features to get E()
+
+    Args:
+        in_dim (int): dimensionality of the input
+        latent_space_dim (int): dimensionality of the latent space
+        cond_dim (int): dimensionality of the conditioning vector (cond)
+        encoder_hidden_layers (list): list of the number of neurons in the hidden layers of the encoder (in order of the layers)
+        decoder_hidden_layers (list): list of the number of neurons in the hidden layers of the decoder (in order of the layers)
+    """
+
+    def __init__(self, config):
+        super().__init__()
+        in_dim = config.model.in_dim
+        # cond_dim = config.model.cond_dim
+        encoder_hidden_layers = config.model.encoder_hidden_layers
+        latent_space_dim = config.model.latent_space_dim
+        decoder_hidden_layers = config.model.decoder_hidden_layers
+        # L = number of sigma levels
+        self.L = config.model.L
+
+        # self.conditionalBN = ConditionalBatchNorm1d(num_features=in_dim, L=self.L)
+        self.encoder = LatentSpaceTf(in_dim, encoder_hidden_layers, latent_space_dim)
+        # self.conditional_instance_norm = ConditionalInstanceNorm1d(num_features=latent_space_dim, L=self.L)
+        # self.embed = nn.Embedding(self.L, latent_space_dim)
+        self.embed = SinusoidalPosEmb(latent_space_dim)
+        self.decoder = nn.Sequential(*[LatentSpaceTf(latent_space_dim, decoder_hidden_layers, 1), nn.ELU()])
+
+
+    def forward(self, x, cond):
+        # out = self.conditionalBN(x, cond)
+        out = self.encoder(x)
+        # out = self.conditional_instance_norm(out, cond)
+        out = out + self.embed(cond)
         energy = self.decoder(out)
 
         

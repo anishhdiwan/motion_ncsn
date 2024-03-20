@@ -39,7 +39,7 @@ def parse_args_and_config():
     else:
         with open(os.path.join(args.log, 'config.yml'), 'r') as f:
             config = yaml.safe_load(f)
-        new_config = config
+        new_config = dict2namespace(config)
 
     if not args.test:
         if not args.resume_training:
