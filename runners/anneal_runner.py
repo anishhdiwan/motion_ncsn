@@ -130,14 +130,6 @@ class AnnealRunner():
                 persistent_workers=True
             )
             
-            # fig = plt.figure(figsize=(8, 6))
-            # ax = fig.add_subplot(111)
-            # fig.add_axes(ax)
-            # ax.scatter(
-            #     sr_points[:, 0], sr_points[:, 2], c=sr_color, s=50, alpha=0.8
-            # )
-            # ax.set_title("Swiss Roll")
-            # plt.show()
 
 
         test_iter = iter(test_loader)
@@ -166,14 +158,6 @@ class AnnealRunner():
             np.exp(np.linspace(np.log(self.config.model.sigma_begin), np.log(self.config.model.sigma_end),
                                self.config.model.L))).float().to(self.config.device)
 
-    
-        ### TESTING ###
-        # print(f"Dataloader outputs {next(iter(dataloader))}")
-        # print(f"Dataloader outputs Y shape {next(iter(dataloader))[1].shape}")
-        # print(f"Dataloader outputs X shape {next(iter(dataloader))[0].shape}")
-        # quit()
-        ### TESTING ###
-        
 
 
         for epoch in range(self.config.training.n_epochs):
@@ -284,27 +268,30 @@ class AnnealRunner():
 
         score.load_state_dict(states[0])
 
+        plot3d = self.config.visualise.plot3d
+        colormask = self.config.visualise.colormask
+        plot_train_data = self.config.visualise.plot_train_data
+
+
         # if not os.path.exists(self.args.image_folder):
         #     os.makedirs(self.args.image_folder)
 
         sigmas = np.exp(np.linspace(np.log(self.config.model.sigma_begin), np.log(self.config.model.sigma_end),
                                     self.config.model.L))
-        print(sigmas)
+
+        print(f"Sigma levels {[(i,val) for i,val in enumerate(sigmas)]}")
 
         score.eval()
 
         imgs = []
         if self.config.data.dataset == 'Swiss-Roll':
 
-            # Only used for plots
-            dataset = SwissRollDataset(n_samples=20000)
-            sr_points = dataset[:]
-
+            
             xs = torch.linspace(-1, 1, steps=100)
             ys = torch.linspace(-1, 1, steps=100)
             x, y = torch.meshgrid(xs, ys, indexing='xy')
 
-            c = 5 # c ranges from [0,L-1]
+            c = self.config.visualise.sigma_level # c ranges from [0,L-1]
             
             grid_points = torch.cat((x.flatten().view(-1, 1),y.flatten().view(-1,1)), 1).to(device=self.config.device)
             labels = torch.ones(grid_points.shape[0], device=grid_points.device) * c # c ranges from [0,L-1]
@@ -313,28 +300,32 @@ class AnnealRunner():
             energy = score(grid_points, labels)
             energy = energy.reshape(-1,x.shape[0])
 
+            if plot3d:
+                ax = plt.axes(projection='3d')
+                ax.plot_surface(x.cpu().cpu().detach().numpy(), y.cpu().detach().numpy(), energy.cpu().detach().numpy())
+                ax.set_xlabel("x")
+                ax.set_ylabel("y")
+                ax.set_zlabel("energy")
+                plt.show()
 
-            ax = plt.axes(projection='3d')
-            ax.plot_surface(x.cpu().cpu().detach().numpy(), y.cpu().detach().numpy(), energy.cpu().detach().numpy())
-            ax.set_xlabel("x")
-            ax.set_ylabel("y")
-            ax.set_zlabel("energy")
+
+            if colormask:
+                plt.figure(figsize=(8, 6))
+                mesh = plt.pcolormesh(x.cpu().cpu().detach().numpy(), y.cpu().detach().numpy(), energy.cpu().detach().numpy(), cmap ='gray')
+                plt.colorbar(mesh)
+
+            if plot_train_data:
+
+                # Only used for plots
+                dataset = SwissRollDataset(n_samples=20000)
+                sr_points = dataset[:]
+
+                plt.scatter(
+                    sr_points[:, 0], sr_points[:, 1], s=5, alpha=0.1
+                )
+
             plt.show()
 
-
-            plt.figure(figsize=(8, 6))
-
-            mesh = plt.pcolormesh(x.cpu().cpu().detach().numpy(), y.cpu().detach().numpy(), energy.cpu().detach().numpy(), cmap ='gray')
-            plt.colorbar(mesh)
-
-            plt.scatter(
-                sr_points[:, 0], sr_points[:, 1], s=5, alpha=0.1
-            )
-
-            plt.show()
-
-
-            quit()
 
             # samples = torch.rand(grid_size ** 2, 1, 28, 28, device=self.config.device)
             # all_samples = self.anneal_Langevin_dynamics(samples, score, sigmas, 100, 0.00002)
