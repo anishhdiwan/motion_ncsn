@@ -260,6 +260,67 @@ class AnnealRunner():
             return images
 
 
+    def default_test(self):
+        states = torch.load(os.path.join(self.args.log, 'checkpoint.pth'), map_location=self.config.device)
+        score = CondRefineNetDilated(self.config).to(self.config.device)
+        score = torch.nn.DataParallel(score)
+
+        score.load_state_dict(states[0])
+
+        if not os.path.exists(self.args.image_folder):
+            os.makedirs(self.args.image_folder)
+
+        sigmas = np.exp(np.linspace(np.log(self.config.model.sigma_begin), np.log(self.config.model.sigma_end),
+                                    self.config.model.L))
+
+        score.eval()
+        grid_size = 5
+
+        imgs = []
+        if self.config.data.dataset == 'MNIST':
+            samples = torch.rand(grid_size ** 2, 1, 28, 28, device=self.config.device)
+            all_samples = self.anneal_Langevin_dynamics(samples, score, sigmas, 100, 0.00002)
+
+            for i, sample in enumerate(tqdm.tqdm(all_samples, total=len(all_samples), desc='saving images')):
+                sample = sample.view(grid_size ** 2, self.config.data.channels, self.config.data.image_size,
+                                     self.config.data.image_size)
+
+                if self.config.data.logit_transform:
+                    sample = torch.sigmoid(sample)
+
+                image_grid = make_grid(sample, nrow=grid_size)
+                if i % 10 == 0:
+                    im = Image.fromarray(image_grid.mul_(255).add_(0.5).clamp_(0, 255).permute(1, 2, 0).to('cpu', torch.uint8).numpy())
+                    imgs.append(im)
+
+                save_image(image_grid, os.path.join(self.args.image_folder, 'image_{}.png'.format(i)))
+                torch.save(sample, os.path.join(self.args.image_folder, 'image_raw_{}.pth'.format(i)))
+
+
+        else:
+            samples = torch.rand(grid_size ** 2, 3, 32, 32, device=self.config.device)
+
+            all_samples = self.anneal_Langevin_dynamics(samples, score, sigmas, 100, 0.00002)
+
+            for i, sample in enumerate(tqdm.tqdm(all_samples, total=len(all_samples), desc='saving images')):
+                sample = sample.view(grid_size ** 2, self.config.data.channels, self.config.data.image_size,
+                                     self.config.data.image_size)
+
+                if self.config.data.logit_transform:
+                    sample = torch.sigmoid(sample)
+
+                image_grid = make_grid(sample, nrow=grid_size)
+                if i % 10 == 0:
+                    im = Image.fromarray(image_grid.mul_(255).add_(0.5).clamp_(0, 255).permute(1, 2, 0).to('cpu', torch.uint8).numpy())
+                    imgs.append(im)
+
+                save_image(image_grid, os.path.join(self.args.image_folder, 'image_{}.png'.format(i)), nrow=10)
+                torch.save(sample, os.path.join(self.args.image_folder, 'image_raw_{}.pth'.format(i)))
+
+        imgs[0].save(os.path.join(self.args.image_folder, "movie.gif"), save_all=True, append_images=imgs[1:], duration=1, loop=0)
+
+
+
     def test(self):
         device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
         states = torch.load(os.path.join(self.args.log, 'checkpoint_200000.pth'), map_location=self.config.device)
