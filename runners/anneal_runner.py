@@ -1,3 +1,11 @@
+# Assuming that motion_ncsn is a submodule in the algo directory
+import sys
+import os
+MOTION_LIB_PATH = os.path.join(os.path.dirname(__file__),
+                               '../../../custom_envs')
+sys.path.append(MOTION_LIB_PATH)
+
+
 import numpy as np
 import tqdm
 from losses.dsm import anneal_dsm_score_estimation
@@ -16,13 +24,6 @@ from datasets.celeba import CelebA
 from models.cond_refinenet_dilated import CondRefineNetDilated
 from torchvision.utils import save_image, make_grid
 from PIL import Image
-
-# Assuming that motion_ncsn is a submodule in the algo directory
-import sys
-import os
-MOTION_LIB_PATH = os.path.join(os.path.dirname(__file__),
-                               '../../../custom_envs')
-sys.path.append(MOTION_LIB_PATH)
 
 from motion_lib import MotionLib
 from models.motion_scorenet import SimpleNet
@@ -135,7 +136,8 @@ class AnnealRunner():
         test_iter = iter(test_loader)
         self.config.input_dim = 2
         
-        tb_path = os.path.join(self.args.run, 'tensorboard', self.args.doc)
+        tb_path = os.path.join(self.args.run, 'summaries', self.args.doc)
+        
         if os.path.exists(tb_path):
             shutil.rmtree(tb_path)
 
