@@ -34,6 +34,10 @@ num_obs_steps = 2
 # Number of features per observation
 num_obs_per_step = 5
 
+# Standardization using RunningMeanStd (compute running mean and stdevs during training and transform data with the latest values)
+from rl_games.algos_torch.running_mean_std import RunningMeanStd
+
+
 __all__ = ['AnnealRunner']
 
 from sklearn import datasets
@@ -41,7 +45,7 @@ import matplotlib.pyplot as plt
 
 
 class SwissRollDataset(torch.utils.data.Dataset):
-    def __init__(self, n_samples=20000, state=0, norm=True):
+    def __init__(self, n_samples=20000, state=0, norm=False):
 
         # Order the swiss roll
         swiss_roll = datasets.make_swiss_roll(n_samples=n_samples, noise=0.0, random_state=state)
@@ -79,6 +83,11 @@ class AnnealRunner():
     def __init__(self, args, config):
         self.args = args
         self.config = config
+        # Added within a try block to also allow running anneal_runner from the main script within this package
+        try:
+            self.normalize = self.config.training.normalize_energynet_input
+        except AttributeError:
+            self.normalize = False
 
     def get_optimizer(self, parameters):
         if self.config.optim.optimizer == 'Adam':
@@ -102,8 +111,18 @@ class AnnealRunner():
             dataloader = motion_lib.get_traj_agnostic_dataloader(batch_size=self.config.training.batch_size, shuffle=True)
             test_loader = dataloader
 
+            if self.normalize:
+                # Standardization
+                self._running_mean_std = RunningMeanStd(torch.ones(self.config.model.in_dim * self.config.model.numObsSteps).shape).to(self.config.device)
+
 
         if self.config.data.dataset == 'Swiss-Roll':
+
+            if self.normalize:
+                # Standardization
+                self._running_mean_std = RunningMeanStd(torch.ones(self.config.model.in_dim).shape).to(self.config.device)
+                self._running_mean_std.train()
+
 
             dataset = SwissRollDataset(n_samples=20000)
             test_dataset = SwissRollDataset(n_samples=4000, state=1)
@@ -135,7 +154,6 @@ class AnnealRunner():
 
 
         test_iter = iter(test_loader)
-        self.config.input_dim = 2
         
         tb_path = os.path.join(self.args.run, 'summaries', self.args.doc)
         
@@ -150,10 +168,10 @@ class AnnealRunner():
 
         optimizer = self.get_optimizer(score.parameters())
 
-        if self.args.resume_training:
-            states = torch.load(os.path.join(self.args.log, 'checkpoint.pth'))
-            score.load_state_dict(states[0])
-            optimizer.load_state_dict(states[1])
+        # if self.args.resume_training:
+        #     states = torch.load(os.path.join(self.args.log, 'checkpoint.pth'))
+        #     score.load_state_dict(states[0])
+        #     optimizer.load_state_dict(states[1])
 
         step = 0
 
@@ -165,14 +183,16 @@ class AnnealRunner():
 
         for epoch in range(self.config.training.n_epochs):
             avg_loss = 0
-            for i, X in enumerate(dataloader): 
-
+            for i, X in enumerate(dataloader):
                 step += 1
                 score.train()
                 X = X.to(self.config.device)
-                # X = X / 256. * 255. + torch.rand_like(X) / 256.
-                if self.config.data.logit_transform:
-                    X = self.logit_transform(X)
+
+                if self.normalize:
+                    X = self._running_mean_std(X)
+
+                # if self.config.data.logit_transform:
+                #     X = self.logit_transform(X)
 
                 labels = torch.randint(0, len(sigmas), (X.shape[0],), device=X.device)
                 # labels = y.to(X.device)
@@ -203,9 +223,12 @@ class AnnealRunner():
                         test_X = next(test_iter)
 
                     test_X = test_X.to(self.config.device)
-                    # test_X = test_X / 256. * 255. + torch.rand_like(test_X) / 256.
-                    if self.config.data.logit_transform:
-                        test_X = self.logit_transform(test_X)
+
+                    if self.normalize:
+                        test_X = self._running_mean_std(test_X)
+
+                    # if self.config.data.logit_transform:
+                    #     test_X = self.logit_transform(test_X)
 
                     test_labels = torch.randint(0, len(sigmas), (test_X.shape[0],), device=test_X.device)
                     # test_labels = test_y.to(test_X.device)
@@ -224,8 +247,12 @@ class AnnealRunner():
                     ]
                     torch.save(states, os.path.join(self.args.log, 'checkpoint_{}.pth'.format(step)))
                     torch.save(states, os.path.join(self.args.log, 'checkpoint.pth'))
+                    
+                    standardization_states = self._running_mean_std.state_dict()
+                    torch.save(standardization_states, os.path.join(self.args.log, 'running_mean_std.pth'))
 
-            logging.info(f"Epoch {epoch} Avg Loss: {avg_loss/len(dataloader)}")
+            print(f"Epoch {epoch} Avg Loss: {avg_loss/len(dataloader)}")
+            # logging.info(f"Epoch {epoch} Avg Loss: {avg_loss/len(dataloader)}")
 
 
     def test(self):

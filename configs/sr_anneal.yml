@@ -34,4 +34,4 @@ optim:
 visualise:
   plot3d: True
   colormask: True
-    plot_train_data: True
+  plot_train_data: True
