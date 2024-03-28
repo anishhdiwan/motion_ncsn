@@ -1,32 +1,17 @@
-# Generative Modeling by Estimating Gradients of the Data Distribution
+# Noise Conditioned Score Networks for Motion Trajectories
 
-This repo contains the official implementation for the NeurIPS 2019 paper 
-[Generative Modeling by Estimating Gradients of the Data Distribution](https://arxiv.org/abs/1907.05600), 
+This repo contains an implementation of [Generative Modeling by Estimating Gradients of the Data Distribution](https://arxiv.org/abs/1907.05600) modified for use with imitation learning algorithms like diffusion motion priors. The underlying algorithm is the same as in the original repo. It is however modified for use with demonstration motion data.
 
-by __Yang Song__ and __Stefano Ermon__. Stanford AI Lab.
-
-**Note**: **The method has been greatly stabilized by the subsequent work
-[Improved Techniques for Training Score-Based Generative Models](https://arxiv.org/abs/2006.09011) ([code](https://github.com/ermongroup/ncsnv2)) and more recently extended by [Score-Based Generative Modeling through Stochastic Differential Equations](https://arxiv.org/abs/2011.13456) ([code](https://github.com/yang-song/score_sde)). This codebase is therefore not recommended for new projects anymore.**
-
--------------------------------------------------------------------------------------
-We describe a new method of generative modeling based on estimating the derivative of the log density 
-function (_a.k.a._, Stein score) of the data distribution. We first perturb our training data by different Gaussian noise with progressively smaller variances. Next, we estimate the score function for each perturbed data distribution, by training a shared neural network named the _Noise Conditional Score Network (NCSN)_ using _score matching_. We can directly produce samples from our NSCN with _annealed Langevin dynamics_.
 
 
 ## Dependencies
 
 * PyTorch
-
 * PyYAML
-
 * tqdm
-
 * pillow
-
 * tensorboardX
-
 * seaborn
-
 
 ## Running Experiments
 
@@ -53,14 +38,12 @@ optional arguments:
                         The directory of image outputs
 ```
 
-There are four runner classes.
+The main runner class, used for annealed langevin dynamics is AnnealRunner.
 
 * `AnnealRunner` The main runner class for experiments related to NCSN and annealed Langevin dynamics.
-* `BaselineRunner` Compared to `AnnealRunner`, this one does not anneal the noise. Instead, it uses a single fixed noise variance.
-* `ScoreNetRunner` This is the runner class for reproducing the experiment of Figure 1 (Middle, Right)
-* `ToyRunner` This is the runner class for reproducing the experiment of Figure 2 and Figure 3.
 
-Configuration files are stored in  `configs/`. For example, the configuration file of `AnnealRunner` is `configs/anneal.yml`. Log files are commonly stored in `run/logs/doc_name`, and tensorboard files are in `run/tensorboard/doc_name`. Here `doc_name` is the value fed to option `--doc`.
+Configuration files are stored in  `configs/`. For example, the configuration file of `AnnealRunner` is `configs/anneal.yml`. Log files are commonly stored in `run/logs/doc_name`, and tensorboard files are in `run/tensorboard/doc_name`. Here `doc_name` is the value fed to option `--doc`. However, if `main.py` is run coupled with other algorithms, a config can also be passed via the primary algorithm.
+
 
 ### Training
 
@@ -80,51 +63,4 @@ Suppose the log files are stored in `run/logs/cifar10`. We can produce samples t
 python main.py --runner AnnealRunner --test -o samples
 ```
 
-### Checkpoints
-
-We provide pretrained checkpoints [run.zip](https://drive.google.com/file/d/1BF2mwFv5IRCGaQbEWTbLlAOWEkNzMe5O/view?usp=sharing). Extract the file to the root folder. You should be able to produce samples like the following using this checkpoint.
-
-| Dataset | Sampling procedure |
-| :------------ | :-------------------------: |
-| MNIST |  ![MNIST](assets/mnist_large.gif)|
-| CelebA |  ![Celeba](assets/celeba_large.gif)|
-|CIFAR-10 |  ![CIFAR10](assets/cifar10_large.gif)|
-
-### Evaluation
-Please refer to Appendix B.2 of our paper for details on hyperparameters and model selection. When computing inception and FID scores, we first generate images from our model, and use the [official code from OpenAI](https://github.com/openai/improved-gan/tree/master/inception_score) and the [original code from TTUR authors](https://github.com/bioinf-jku/TTUR) to obtain the scores.
-
-
-## References
-
-Large parts of the code are derived from [this Github repo](https://github.com/ermongroup/sliced_score_matching) (the official implementation of the [sliced score matching paper](https://arxiv.org/abs/1905.07088))
-
-If you find the code / idea inspiring for your research, please consider citing the following
-
-```bib
-@inproceedings{song2019generative,
-  title={Generative Modeling by Estimating Gradients of the Data Distribution},
-  author={Song, Yang and Ermon, Stefano},
-  booktitle={Advances in Neural Information Processing Systems},
-  pages={11895--11907},
-  year={2019}
-}
-```
-
-and / or
-
-```bib
-@inproceedings{song2019sliced,
-  author    = {Yang Song and
-               Sahaj Garg and
-               Jiaxin Shi and
-               Stefano Ermon},
-  title     = {Sliced Score Matching: {A} Scalable Approach to Density and Score
-               Estimation},
-  booktitle = {Proceedings of the Thirty-Fifth Conference on Uncertainty in Artificial
-               Intelligence, {UAI} 2019, Tel Aviv, Israel, July 22-25, 2019},
-  pages     = {204},
-  year      = {2019},
-  url       = {http://auai.org/uai2019/proceedings/papers/204.pdf},
-}
-```
 
