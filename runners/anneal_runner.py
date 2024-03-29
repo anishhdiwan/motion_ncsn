@@ -255,6 +255,87 @@ class AnnealRunner():
             # logging.info(f"Epoch {epoch} Avg Loss: {avg_loss/len(dataloader)}")
 
 
+    def visualise_energy(self):
+        device = self.config.device
+        states = torch.load(self.config.inference.eb_model_checkpoint, map_location=self.config.device)
+        score = SimpleNet(self.config).to(self.config.device)
+        score = torch.nn.DataParallel(score)
+        score.load_state_dict(states[0])
+        score.eval()
+
+        plot3d = self.config.visualise.plot3d
+        colormask = self.config.visualise.colormask
+        plot_train_data = self.config.visualise.plot_train_data
+
+        if self.config.training.normalize_energynet_input:
+            running_mean_std = RunningMeanStd(torch.ones(self.config.model.in_dim).shape).to(self.config.device)
+            running_mean_std_states = torch.load(self.config.inference.running_mean_std_checkpoint, map_location=self.config.device)
+            running_mean_std.load_state_dict(running_mean_std_states)
+            
+            print(f"EnergyNet was trained using normalised inputs. Data mean {running_mean_std.running_mean} Data var {running_mean_std.running_var}")
+
+            viz_min = running_mean_std.running_mean - 0.5*torch.sqrt(running_mean_std.running_var)
+            viz_max = running_mean_std.running_mean + 0.5*torch.sqrt(running_mean_std.running_var)
+
+            viz_min = viz_min.cpu().detach().numpy()
+            viz_max = viz_max.cpu().detach().numpy()
+
+        else:
+            viz_min = [-1,-1]
+            miz_max = [1,1]
+
+
+        # if not os.path.exists(self.args.image_folder):
+        #     os.makedirs(self.args.image_folder)
+
+        sigmas = np.exp(np.linspace(np.log(self.config.model.sigma_begin), np.log(self.config.model.sigma_end),
+                                    self.config.model.L))
+        print(f"Sigma levels {[(i,val) for i,val in enumerate(sigmas)]}")
+
+
+        if self.config.data.dataset == 'Swiss-Roll':
+
+            
+            xs = torch.linspace(viz_min[0], viz_max[0], steps=100)
+            ys = torch.linspace(viz_min[1], viz_max[1], steps=100)
+            x, y = torch.meshgrid(xs, ys, indexing='xy')
+
+            c = self.config.inference.sigma_level # c ranges from [0,L-1]
+            
+            grid_points = torch.cat((x.flatten().view(-1, 1),y.flatten().view(-1,1)), 1).to(device=self.config.device)
+            labels = torch.ones(grid_points.shape[0], device=grid_points.device) * c # c ranges from [0,L-1]
+
+
+            energy = score(grid_points, labels)
+            energy = energy.reshape(-1,x.shape[0])
+
+            if plot3d:
+                ax = plt.axes(projection='3d')
+                ax.plot_surface(x.cpu().cpu().detach().numpy(), y.cpu().detach().numpy(), energy.cpu().detach().numpy())
+                ax.set_xlabel("x")
+                ax.set_ylabel("y")
+                ax.set_zlabel("energy")
+                plt.show()
+
+
+            if colormask:
+                plt.figure(figsize=(8, 6))
+                mesh = plt.pcolormesh(x.cpu().cpu().detach().numpy(), y.cpu().detach().numpy(), energy.cpu().detach().numpy(), cmap ='gray')
+                plt.colorbar(mesh)
+
+            if plot_train_data:
+
+                # Only used for plots
+                dataset = SwissRollDataset(n_samples=20000)
+                sr_points = dataset[:]
+
+                plt.scatter(
+                    sr_points[:, 0], sr_points[:, 1], s=5, alpha=0.1
+                )
+
+            plt.show()
+
+
     def test(self):
         device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
         states = torch.load(os.path.join(self.args.log, 'checkpoint_200000.pth'), map_location=self.config.device)
