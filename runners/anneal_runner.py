@@ -64,6 +64,9 @@ class SwissRollDataset(torch.utils.data.Dataset):
 
             swiss_roll = ndata
 
+        # Shifting the data to the particle env range (the aim is to learn an energy function in the same range that is seen in the real world)
+        swiss_roll = (swiss_roll - swiss_roll.min(axis=0))*(512)/(swiss_roll.max(axis=0) - swiss_roll.min(axis=0))
+
         swiss_roll_tensor = torch.from_numpy(swiss_roll)
 
         self.swiss_roll_tensor = swiss_roll_tensor[:,[0,2]].to(torch.float)
@@ -271,18 +274,21 @@ class AnnealRunner():
             running_mean_std = RunningMeanStd(torch.ones(self.config.model.in_dim).shape).to(self.config.device)
             running_mean_std_states = torch.load(self.config.inference.running_mean_std_checkpoint, map_location=self.config.device)
             running_mean_std.load_state_dict(running_mean_std_states)
+            running_mean_std.eval()
             
             print(f"EnergyNet was trained using normalised inputs. Data mean {running_mean_std.running_mean} Data var {running_mean_std.running_var}")
 
-            viz_min = running_mean_std.running_mean - 0.5*torch.sqrt(running_mean_std.running_var)
-            viz_max = running_mean_std.running_mean + 0.5*torch.sqrt(running_mean_std.running_var)
+            viz_min = [-5,-5]
+            viz_max = [5,5]
+            # viz_min = running_mean_std.running_mean - 5*torch.sqrt(running_mean_std.running_var)
+            # viz_max = running_mean_std.running_mean + 5*torch.sqrt(running_mean_std.running_var)
 
-            viz_min = viz_min.cpu().detach().numpy()
-            viz_max = viz_max.cpu().detach().numpy()
+            # viz_min = viz_min.cpu().detach().numpy()
+            # viz_max = viz_max.cpu().detach().numpy()
 
         else:
             viz_min = [-1,-1]
-            miz_max = [1,1]
+            viz_max = [1,1]
 
 
         # if not os.path.exists(self.args.image_folder):
@@ -328,6 +334,11 @@ class AnnealRunner():
                 # Only used for plots
                 dataset = SwissRollDataset(n_samples=20000)
                 sr_points = dataset[:]
+                sr_points = sr_points.to(self.config.device)
+
+                if self.config.training.normalize_energynet_input:
+                    sr_points = running_mean_std(sr_points)
+                    sr_points = sr_points.cpu().detach().numpy()
 
                 plt.scatter(
                     sr_points[:, 0], sr_points[:, 1], s=5, alpha=0.1
