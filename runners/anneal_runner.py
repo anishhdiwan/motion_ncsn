@@ -27,12 +27,9 @@ from PIL import Image
 
 from motion_lib import MotionLib
 from models.motion_scorenet import SimpleNet
-motion_file = MOTION_LIB_PATH + "/data/pusht/pusht_cchi_v7_replay.zarr"
 # Sample motion sets with each set having num_obs_steps motions. For example, if num_obs_steps = 2 then sample s,s' pairs. 
 # In this case s' is the generated data while s is the conditioning vector
-num_obs_steps = 2
-# Number of features per observation
-num_obs_per_step = 5
+
 
 # Standardization using RunningMeanStd (compute running mean and stdevs during training and transform data with the latest values)
 from rl_games.algos_torch.running_mean_std import RunningMeanStd
@@ -110,7 +107,7 @@ class AnnealRunner():
     def train(self):
 
         if self.config.data.dataset == 'pushT':
-            motion_lib = MotionLib(motion_file, num_obs_steps, num_obs_per_step, episodic=False, normalize=False, test_split=True)
+            motion_lib = MotionLib(self.config.data.motion_file, self.config.model.numObsSteps, self.config.model.in_dim, episodic=False, normalize=False, test_split=True)
             dataloader, test_loader = motion_lib.get_traj_agnostic_dataloader(batch_size=self.config.training.batch_size, shuffle=True)
 
             if self.normalize:
@@ -119,10 +116,8 @@ class AnnealRunner():
 
 
         if self.config.data.dataset == 'maze':
-            motion_lib = MotionLib(motion_file, num_obs_steps, num_obs_per_step, episodic=False, normalize=False, test_split=True)
+            motion_lib = MotionLib(self.config.data.motion_file, self.config.model.numObsSteps, self.config.model.in_dim, episodic=False, normalize=False, test_split=True, auto_ends=False)
             dataloader, test_loader = motion_lib.get_traj_agnostic_dataloader(batch_size=self.config.training.batch_size, shuffle=True)
-
-            quit()
 
             if self.normalize:
                 # Standardization
