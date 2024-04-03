@@ -110,13 +110,25 @@ class AnnealRunner():
     def train(self):
 
         if self.config.data.dataset == 'pushT':
-            motion_lib = MotionLib(motion_file, num_obs_steps, num_obs_per_step, episodic=False, normalize=True)
-            dataloader = motion_lib.get_traj_agnostic_dataloader(batch_size=self.config.training.batch_size, shuffle=True)
-            test_loader = dataloader
+            motion_lib = MotionLib(motion_file, num_obs_steps, num_obs_per_step, episodic=False, normalize=False, test_split=True)
+            dataloader, test_loader = motion_lib.get_traj_agnostic_dataloader(batch_size=self.config.training.batch_size, shuffle=True)
 
             if self.normalize:
                 # Standardization
                 self._running_mean_std = RunningMeanStd(torch.ones(self.config.model.in_dim * self.config.model.numObsSteps).shape).to(self.config.device)
+
+
+        if self.config.data.dataset == 'maze':
+            motion_lib = MotionLib(motion_file, num_obs_steps, num_obs_per_step, episodic=False, normalize=False, test_split=True)
+            dataloader, test_loader = motion_lib.get_traj_agnostic_dataloader(batch_size=self.config.training.batch_size, shuffle=True)
+
+            quit()
+
+            if self.normalize:
+                # Standardization
+                self._running_mean_std = RunningMeanStd(torch.ones(self.config.model.in_dim * self.config.model.numObsSteps).shape).to(self.config.device)
+
+
 
 
         if self.config.data.dataset == 'Swiss-Roll':
