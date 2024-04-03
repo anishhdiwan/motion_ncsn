@@ -379,10 +379,13 @@ class AnnealRunner():
         score.eval()
 
         colormask = self.config.visualise.colormask
-        viz_min = [0,0]
-        viz_max = [512, 512]
+        viz_min = 0
+        viz_max = 512
         c = self.config.inference.sigma_level # c ranges from [0,L-1]
-        kernel_size = 3
+        kernel_size = 3 # must be odd
+        grid_steps = 200
+        window_idx_left = int((kernel_size - 1)/2)
+        window_idx_right = int((kernel_size + 1)/2)
 
         if self.config.training.normalize_energynet_input:
             running_mean_std = RunningMeanStd(torch.ones(self.config.model.in_dim * self.config.model.numObsSteps).shape).to(self.config.device)
@@ -397,21 +400,21 @@ class AnnealRunner():
                                     self.config.model.L))
         print(f"Sigma levels {[(i,val.item()) for i,val in enumerate(sigmas)]}")
 
-        xs = torch.linspace(viz_min[0], viz_max[0], steps=100)
-        ys = torch.linspace(viz_min[1], viz_max[1], steps=100)
+        xs = torch.linspace(viz_min, viz_max, steps=grid_steps)
+        ys = torch.linspace(viz_min, viz_max, steps=grid_steps)
         x, y = torch.meshgrid(xs, ys, indexing='xy')
 
         grid_points = torch.cat((x.flatten().view(-1, 1),y.flatten().view(-1,1)), 1).to(device=self.config.device)
-        grid_points = grid_points.reshape(100,100,2)
-        energy_grid = torch.zeros(100,100,1)
+        grid_points = grid_points.reshape(grid_steps,grid_steps,2)
+        energy_grid = torch.zeros(grid_steps,grid_steps,1)
 
         for i in range(grid_points.shape[0]):
             for j in range(grid_points.shape[1]):
-                if i in [0,512] or j in [0,512]:
+                if i in [viz_min,viz_max] or j in [viz_min,viz_max]:
                     pass
                     
                 else:
-                    window = grid_points[i-1:i+2,j-1:j+2,:]
+                    window = grid_points[i-window_idx_left:i+window_idx_right,j-window_idx_left:j+window_idx_right,:]
                     grid_pt_window = torch.zeros_like(window)
                     grid_pt_window[:,:,:] = grid_points[i,j]
 
@@ -430,6 +433,7 @@ class AnnealRunner():
         if colormask:
             plt.figure(figsize=(8, 6))
             mesh = plt.pcolormesh(x.cpu().cpu().detach().numpy(), y.cpu().detach().numpy(), energy_grid.cpu().detach().numpy(), cmap ='gray')
+            plt.gca().invert_yaxis()
             plt.colorbar(mesh)
 
 
