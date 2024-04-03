@@ -191,18 +191,15 @@ class SimpleNet(nn.Module):
 
     def __init__(self, config):
         super().__init__()
-        in_dim = config.model.in_dim
+        self.in_dim = in_dim = config.model.in_dim * config.model.numObsSteps
         # cond_dim = config.model.cond_dim
         encoder_hidden_layers = config.model.encoder_hidden_layers
         latent_space_dim = config.model.latent_space_dim
         decoder_hidden_layers = config.model.decoder_hidden_layers
         # L = number of sigma levels
-        self.L = config.model.L
+        # self.L = config.model.L
 
-        # self.conditionalBN = ConditionalBatchNorm1d(num_features=in_dim, L=self.L)
         self.encoder = LatentSpaceTf(in_dim, encoder_hidden_layers, latent_space_dim)
-        # self.conditional_instance_norm = ConditionalInstanceNorm1d(num_features=latent_space_dim, L=self.L)
-        # self.embed = nn.Embedding(self.L, latent_space_dim)
         self.embed = SinusoidalPosEmb(latent_space_dim)
         self.decoder = nn.Sequential(*[LatentSpaceTf(latent_space_dim, decoder_hidden_layers, 1), nn.ELU()])
 

@@ -30,6 +30,7 @@ def anneal_dsm_score_estimation(scorenet, samples, labels, sigmas, anneal_power=
     samples.requires_grad = True
     used_sigmas = sigmas[labels].view(samples.shape[0], *([1] * len(samples.shape[1:])))    
     perturbed_samples = samples + torch.randn_like(samples) * used_sigmas
+    perturbed_samples = perturbed_samples.to(torch.float)
     target = - 1 / (used_sigmas ** 2) * (perturbed_samples - samples)
 
     # Default NCSN

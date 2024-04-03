@@ -173,7 +173,6 @@ class AnnealRunner():
         tb_logger = tensorboardX.SummaryWriter(log_dir=tb_path)
         # score = DummyNet(self.config).to(self.config.device)
         score = SimpleNet(self.config).to(self.config.device)
-
         score = torch.nn.DataParallel(score)
 
         optimizer = self.get_optimizer(score.parameters())
@@ -197,15 +196,14 @@ class AnnealRunner():
                 step += 1
                 score.train()
                 X = X.to(self.config.device)
-
                 if self.normalize:
                     X = self._running_mean_std(X)
+          
 
                 # if self.config.data.logit_transform:
                 #     X = self.logit_transform(X)
 
                 labels = torch.randint(0, len(sigmas), (X.shape[0],), device=X.device)
-                # labels = y.to(X.device)
 
                 if self.config.training.algo == 'dsm':
                     loss = anneal_dsm_score_estimation(score, X, labels, sigmas, self.config.training.anneal_power)
