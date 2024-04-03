@@ -264,6 +264,15 @@ class AnnealRunner():
 
 
     def visualise_energy(self):
+        if self.config.data.dataset == 'Swiss-Roll':
+            self.visualise_sr_energy()
+        elif self.config.data.dataset == 'maze':
+            self.visualise_2d_energy()
+
+
+    def visualise_sr_energy(self):
+        """Visualise the energy function for the swiss-roll toy dataset
+        """
         device = self.config.device
         states = torch.load(self.config.inference.eb_model_checkpoint, map_location=self.config.device)
         score = SimpleNet(self.config).to(self.config.device)
@@ -352,106 +361,76 @@ class AnnealRunner():
             plt.show()
 
 
-    def test(self):
-        device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-        states = torch.load(os.path.join(self.args.log, 'checkpoint_200000.pth'), map_location=self.config.device)
+
+    def visualise_2d_energy(self):
+        """Visualise the energy function for 2D maze environment
+
+        An observation in the maze env is a 2D vector. The energy net is trained using s-s' pairs so the input is 4D. To visualise this in a 2D plane:
+        - First a meshgrid of the same size as the env is created
+        - For every point in the meshgrid, a window of the agent's reachable set is computed
+        - s-s' pairs are the ncomputed by pairing every meshgrid point with another point in the window (reachable set)
+        - The energy function is then computed in using this 4D input and the average energy is assigned to that meshgrid point
+        """
+        device = self.config.device
+        states = torch.load(self.config.inference.eb_model_checkpoint, map_location=self.config.device)
         score = SimpleNet(self.config).to(self.config.device)
         score = torch.nn.DataParallel(score)
-
         score.load_state_dict(states[0])
+        score.eval()
 
-        plot3d = self.config.visualise.plot3d
         colormask = self.config.visualise.colormask
-        plot_train_data = self.config.visualise.plot_train_data
+        viz_min = [0,0]
+        viz_max = [512, 512]
+        c = self.config.inference.sigma_level # c ranges from [0,L-1]
+        kernel_size = 3
 
+        if self.config.training.normalize_energynet_input:
+            running_mean_std = RunningMeanStd(torch.ones(self.config.model.in_dim * self.config.model.numObsSteps).shape).to(self.config.device)
+            running_mean_std_states = torch.load(self.config.inference.running_mean_std_checkpoint, map_location=self.config.device)
+            running_mean_std.load_state_dict(running_mean_std_states)
+            running_mean_std.eval()
+            
+            print(f"EnergyNet was trained using normalised inputs. Data mean {running_mean_std.running_mean} Data var {running_mean_std.running_var}")
 
-        # if not os.path.exists(self.args.image_folder):
-        #     os.makedirs(self.args.image_folder)
 
         sigmas = np.exp(np.linspace(np.log(self.config.model.sigma_begin), np.log(self.config.model.sigma_end),
                                     self.config.model.L))
+        print(f"Sigma levels {[(i,val.item()) for i,val in enumerate(sigmas)]}")
 
-        print(f"Sigma levels {[(i,val) for i,val in enumerate(sigmas)]}")
+        xs = torch.linspace(viz_min[0], viz_max[0], steps=100)
+        ys = torch.linspace(viz_min[1], viz_max[1], steps=100)
+        x, y = torch.meshgrid(xs, ys, indexing='xy')
 
-        score.eval()
+        grid_points = torch.cat((x.flatten().view(-1, 1),y.flatten().view(-1,1)), 1).to(device=self.config.device)
+        grid_points = grid_points.reshape(100,100,2)
+        energy_grid = torch.zeros(100,100,1)
 
-        imgs = []
-        if self.config.data.dataset == 'Swiss-Roll':
+        for i in range(grid_points.shape[0]):
+            for j in range(grid_points.shape[1]):
+                if i in [0,512] or j in [0,512]:
+                    pass
+                    
+                else:
+                    window = grid_points[i-1:i+2,j-1:j+2,:]
+                    grid_pt_window = torch.zeros_like(window)
+                    grid_pt_window[:,:,:] = grid_points[i,j]
 
-            
-            xs = torch.linspace(-1, 1, steps=100)
-            ys = torch.linspace(-1, 1, steps=100)
-            x, y = torch.meshgrid(xs, ys, indexing='xy')
+                    obs_pairs = torch.cat((window, grid_pt_window), 2)
 
-            c = self.config.visualise.sigma_level # c ranges from [0,L-1]
-            
-            grid_points = torch.cat((x.flatten().view(-1, 1),y.flatten().view(-1,1)), 1).to(device=self.config.device)
-            labels = torch.ones(grid_points.shape[0], device=grid_points.device) * c # c ranges from [0,L-1]
+                    obs_pairs = obs_pairs.reshape(-1,4)
+                    labels = torch.ones(obs_pairs.shape[0], device=grid_points.device) * c # c ranges from [0,L-1]
+                    
+                    obs_pairs = running_mean_std(obs_pairs)
+                    energy = score(obs_pairs, labels)
+                    mean_energy = torch.mean(energy).item()
+                    energy_grid[i,j] = mean_energy
 
+        energy_grid = energy_grid.reshape(-1,x.shape[0])
 
-            energy = score(grid_points, labels)
-            energy = energy.reshape(-1,x.shape[0])
-
-            if plot3d:
-                ax = plt.axes(projection='3d')
-                ax.plot_surface(x.cpu().cpu().detach().numpy(), y.cpu().detach().numpy(), energy.cpu().detach().numpy())
-                ax.set_xlabel("x")
-                ax.set_ylabel("y")
-                ax.set_zlabel("energy")
-                plt.show()
-
-
-            if colormask:
-                plt.figure(figsize=(8, 6))
-                mesh = plt.pcolormesh(x.cpu().cpu().detach().numpy(), y.cpu().detach().numpy(), energy.cpu().detach().numpy(), cmap ='gray')
-                plt.colorbar(mesh)
-
-            if plot_train_data:
-
-                # Only used for plots
-                dataset = SwissRollDataset(n_samples=20000)
-                sr_points = dataset[:]
-
-                plt.scatter(
-                    sr_points[:, 0], sr_points[:, 1], s=5, alpha=0.1
-                )
-
-            plt.show()
+        if colormask:
+            plt.figure(figsize=(8, 6))
+            mesh = plt.pcolormesh(x.cpu().cpu().detach().numpy(), y.cpu().detach().numpy(), energy_grid.cpu().detach().numpy(), cmap ='gray')
+            plt.colorbar(mesh)
 
 
-
-
-    # def Langevin_dynamics(self, x_mod, scorenet, n_steps=200, step_lr=0.00005):
-    #     images = []
-
-    #     labels = torch.ones(x_mod.shape[0], device=x_mod.device) * 9
-    #     labels = labels.long()
-
-    #     with torch.no_grad():
-    #         for _ in range(n_steps):
-    #             images.append(torch.clamp(x_mod, 0.0, 1.0).to('cpu'))
-    #             noise = torch.randn_like(x_mod) * np.sqrt(step_lr * 2)
-    #             grad = scorenet(x_mod, labels)
-    #             x_mod = x_mod + step_lr * grad + noise
-    #             x_mod = x_mod
-    #             print("modulus of grad components: mean {}, max {}".format(grad.abs().mean(), grad.abs().max()))
-
-    #         return images
-
-    # def anneal_Langevin_dynamics(self, x_mod, scorenet, sigmas, n_steps_each=100, step_lr=0.00002):
-    #     images = []
-
-    #     with torch.no_grad():
-    #         for c, sigma in tqdm.tqdm(enumerate(sigmas), total=len(sigmas), desc='annealed Langevin dynamics sampling'):
-    #             labels = torch.ones(x_mod.shape[0], device=x_mod.device) * c
-    #             labels = labels.long()
-    #             step_size = step_lr * (sigma / sigmas[-1]) ** 2
-    #             for s in range(n_steps_each):
-    #                 images.append(torch.clamp(x_mod, 0.0, 1.0).to('cpu'))
-    #                 noise = torch.randn_like(x_mod) * np.sqrt(step_size * 2)
-    #                 grad = scorenet(x_mod, labels)
-    #                 x_mod = x_mod + step_size * grad + noise
-    #                 # print("class: {}, step_size: {}, mean {}, max {}".format(c, step_size, grad.abs().mean(),
-    #                 #                                                          grad.abs().max()))
-
-    #         return images
+        plt.show()
