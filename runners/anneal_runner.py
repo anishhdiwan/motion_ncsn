@@ -434,6 +434,9 @@ class AnnealRunner():
             plt.figure(figsize=(8, 6))
             mesh = plt.pcolormesh(x.cpu().cpu().detach().numpy(), y.cpu().detach().numpy(), energy_grid.cpu().detach().numpy(), cmap ='gray')
             plt.gca().invert_yaxis()
+            plt.xlabel("env - x")
+            plt.ylabel("env - y")
+            plt.title(f"Maze Env E(s,s' | c={c}) | Mean energy in agent's reachable set")
             plt.colorbar(mesh)
 
 
