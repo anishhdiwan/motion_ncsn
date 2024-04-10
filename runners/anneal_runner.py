@@ -8,7 +8,7 @@ sys.path.append(MOTION_LIB_PATH)
 
 import numpy as np
 import tqdm
-from losses.dsm import anneal_dsm_score_estimation
+from losses.dsm import *
 from losses.sliced_sm import anneal_sliced_score_estimation_vr
 import torch.nn.functional as F
 import logging
@@ -206,7 +206,7 @@ class AnnealRunner():
                 labels = torch.randint(0, len(sigmas), (X.shape[0],), device=X.device)
 
                 if self.config.training.algo == 'dsm':
-                    loss = anneal_dsm_score_estimation(score, X, labels, sigmas, self.config.training.anneal_power)
+                    loss = anneal_dsm_energy_estimation(score, X, labels, sigmas, self.config.training.anneal_power)
                 elif self.config.training.algo == 'ssm':
                     loss = anneal_sliced_score_estimation_vr(score, X, labels, sigmas,
                                                              n_particles=self.config.training.n_particles)
@@ -243,7 +243,7 @@ class AnnealRunner():
 
                     # with torch.no_grad():
                     # Instead of setting no_grad, explicitly compute scores as gradients without adding to the graph
-                    test_dsm_loss = anneal_dsm_score_estimation(score, test_X, test_labels, sigmas,
+                    test_dsm_loss = anneal_dsm_energy_estimation(score, test_X, test_labels, sigmas,
                                                                     self.config.training.anneal_power, grad=False)
 
                     tb_logger.add_scalar('test_dsm_loss', test_dsm_loss, global_step=step)
