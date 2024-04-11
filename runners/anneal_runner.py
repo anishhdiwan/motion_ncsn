@@ -383,7 +383,7 @@ class AnnealRunner():
         viz_max = 512
         c = self.config.inference.sigma_level # c ranges from [0,L-1]
         kernel_size = 3 # must be odd
-        grid_steps = 200
+        grid_steps = 128
         window_idx_left = int((kernel_size - 1)/2)
         window_idx_right = int((kernel_size + 1)/2)
 
