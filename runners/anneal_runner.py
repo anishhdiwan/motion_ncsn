@@ -6,6 +6,13 @@ MOTION_LIB_PATH = os.path.join(os.path.dirname(__file__),
 sys.path.append(MOTION_LIB_PATH)
 
 
+from humanoid_motion_lib import HumanoidMotionLib
+from gym_motion_lib import GymMotionLib
+from models.motion_scorenet import SimpleNet
+# Sample motion sets with each set having num_obs_steps motions. For example, if num_obs_steps = 2 then sample s,s' pairs. 
+# In this case s' is the generated data while s is the conditioning vector
+
+from omegaconf import OmegaConf
 import numpy as np
 import tqdm
 from losses.dsm import *
@@ -24,11 +31,6 @@ from datasets.celeba import CelebA
 from models.cond_refinenet_dilated import CondRefineNetDilated
 from torchvision.utils import save_image, make_grid
 from PIL import Image
-
-from motion_lib import MotionLib
-from models.motion_scorenet import SimpleNet
-# Sample motion sets with each set having num_obs_steps motions. For example, if num_obs_steps = 2 then sample s,s' pairs. 
-# In this case s' is the generated data while s is the conditioning vector
 
 
 # Standardization using RunningMeanStd (compute running mean and stdevs during training and transform data with the latest values)
@@ -107,24 +109,38 @@ class AnnealRunner():
     def train(self):
 
         if self.config.data.dataset == 'pushT':
-            motion_lib = MotionLib(self.config.data.motion_file, self.config.model.numObsSteps, self.config.model.in_dim, episodic=False, normalize=False, test_split=True)
+            motion_lib = GymMotionLib(self.config.data.motion_file, self.config.model.numObsSteps, self.config.model.in_dim, episodic=False, normalize=False, test_split=True)
             dataloader, test_loader = motion_lib.get_traj_agnostic_dataloader(batch_size=self.config.training.batch_size, shuffle=True)
-
-            if self.normalize:
-                # Standardization
-                self._running_mean_std = RunningMeanStd(torch.ones(self.config.model.in_dim * self.config.model.numObsSteps).shape).to(self.config.device)
-
 
         if self.config.data.dataset == 'maze':
-            motion_lib = MotionLib(self.config.data.motion_file, self.config.model.numObsSteps, self.config.model.in_dim, episodic=False, normalize=False, test_split=True, auto_ends=False)
+            motion_lib = GymMotionLib(self.config.data.motion_file, self.config.model.numObsSteps, self.config.model.in_dim, episodic=False, normalize=False, test_split=True, auto_ends=False)
             dataloader, test_loader = motion_lib.get_traj_agnostic_dataloader(batch_size=self.config.training.batch_size, shuffle=True)
 
-            if self.normalize:
-                # Standardization
-                self._running_mean_std = RunningMeanStd(torch.ones(self.config.model.in_dim * self.config.model.numObsSteps).shape).to(self.config.device)
+        if self.config.data.dataset == 'humanoid':
+            # Setting up a dict for motion lib processing
+            humanoid_cfg = OmegaConf.create()
+            humanoid_cfg.physics_engine = self.config.data.physics_engine
+            humanoid_cfg.sim = self.config.data.sim_params
+            humanoid_cfg.env = self.config.data.env_params
+            humanoid_cfg.env.numEnvs = self.config.data.numEnvs
+            humanoid_cfg.sim.use_gpu_pipeline = self.config.data.use_gpu_pipeline
+            humanoid_cfg.sim.physx.num_threads = self.config.data.num_threads
+            humanoid_cfg.sim.physx.solver_type = self.config.data.solver_type
+            humanoid_cfg.sim.physx.num_subscenes = self.config.data.num_subscenes
+            humanoid_cfg.sim.physx.use_gpu = self.config.data.use_gpu
+
+            motion_lib = HumanoidMotionLib(self.config.data.env_params.motion_file, humanoid_cfg, self.config.device)
+            dataloader = motion_lib.get_dataloader(batch_size=self.config.training.batch_size, shuffle=True)
+
+            for i, X in enumerate(dataloader):
+                print(f"idx {i} \n data {X}")
+
+            quit()
 
 
-
+        if self.normalize:
+            # Standardization
+            self._running_mean_std = RunningMeanStd(torch.ones(self.config.model.in_dim * self.config.model.numObsSteps).shape).to(self.config.device)
 
         if self.config.data.dataset == 'Swiss-Roll':
 
