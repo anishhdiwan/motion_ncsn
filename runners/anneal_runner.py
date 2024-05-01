@@ -130,13 +130,8 @@ class AnnealRunner():
             humanoid_cfg.sim.physx.use_gpu = self.config.data.use_gpu
 
             motion_lib = HumanoidMotionLib(self.config.data.env_params.motion_file, humanoid_cfg, self.config.device)
-            dataloader = motion_lib.get_dataloader(batch_size=self.config.training.batch_size, shuffle=True)
-
-            for i, X in enumerate(dataloader):
-                print(f"idx {i} \n data {X}")
-
-            quit()
-
+            dataloader = motion_lib.get_dataloader(batch_size=self.config.training.batch_size, buffer_size=self.config.training.buffer_size, shuffle=True)
+            test_loader = dataloader
 
         if self.normalize:
             # Standardization
@@ -180,7 +175,6 @@ class AnnealRunner():
 
 
         test_iter = iter(test_loader)
-        
         tb_path = os.path.join(self.args.run, 'summaries', self.args.doc)
         
         if os.path.exists(tb_path):
@@ -199,7 +193,6 @@ class AnnealRunner():
         #     optimizer.load_state_dict(states[1])
 
         step = 0
-
         sigmas = torch.tensor(
             np.exp(np.linspace(np.log(self.config.model.sigma_begin), np.log(self.config.model.sigma_end),
                                self.config.model.L))).float().to(self.config.device)
