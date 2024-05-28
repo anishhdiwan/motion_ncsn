@@ -53,16 +53,29 @@ def anneal_dsm_score_estimation(scorenet, samples, labels, sigmas, anneal_power=
 
 
 def anneal_dsm_energy_estimation(scorenet, samples, labels, sigmas, anneal_power=2., grad=True):
-    # samples.requires_grad = True
+
+    DIST_KERNEL = "gaussian" # options are "gaussian" or "uniform"
+
     used_sigmas = sigmas[labels].view(samples.shape[0], *([1] * len(samples.shape[1:])))    
-    perturbed_samples = samples + torch.randn_like(samples) * used_sigmas
+    
+    if DIST_KERNEL == "gaussian":
+        # Default NCSN: gaussian perturbation
+        perturbed_samples = samples + torch.randn_like(samples) * used_sigmas
+    elif DIST_KERNEL == "uniform":
+        # Perturb using uniform distribution
+        perturbed_samples = samples + ((1 - 2*torch.rand(samples.shape, device=samples.device)) * used_sigmas)
+
     perturbed_samples = perturbed_samples.to(torch.float)
 
-    # target = - 1 / (used_sigmas ** 2) * (perturbed_samples - samples)
-
-    target = ((perturbed_samples - samples)**2 )/ (2*(used_sigmas ** 2))
-    target = torch.linalg.norm(target, dim=1, ord=2).to(torch.float)
-
+    if DIST_KERNEL == "gaussian":
+        # Default NCSN: gaussian perturbation dist function
+        target = ((perturbed_samples - samples)**2 )/ (2*(used_sigmas ** 2))
+        target = torch.linalg.norm(target, dim=1).to(torch.float)
+    elif DIST_KERNEL == "uniform":
+        # Norm of perturbation distance scaled by the perturbation sigma level (here sigma is not covariance but some radius of perturbation in range [0,1])
+        target = torch.linalg.norm((perturbed_samples - samples), dim=1).to(torch.float)/used_sigmas
+    
+    
     # Energy-NCSN
     if grad:
         energy = scorenet(perturbed_samples, labels)
