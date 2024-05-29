@@ -27,7 +27,36 @@ def dsm_score_estimation(scorenet, samples, sigma=0.01):
     return loss
 
 
-def anneal_dsm_score_estimation(scorenet, samples, labels, sigmas, anneal_power=2., grad=True):
+def anneal_dsm_loss(network, samples, labels, sigmas, anneal_power=2., grad=True):
+    """Implement either anneal DSM score matching or anneal DSM energy matching based on the defined presets
+
+    Ultimately, both methods learn an energy based model. 
+    Score matching matches the grad_x log q(x',x) with - grad_x EBM
+    Energy matching matches DIST(x',x) with EBM
+
+    Args:
+        network (nn.Model): The energy based model
+        samples (torch.Tensor): Input data points to train the EBM
+        labels (torch.Tensor): Sigma labels based on which each sample is perturbed
+        sigma (np.Array): An array of sigma values ranging from 0,L-1
+        anneal_power (Float): Annealing regularisation power
+        grad (Bool): Whether to backprop gradients
+    """
+
+    LOSS_TYPE = "score" # options are "score" or "energy"
+
+    if LOSS_TYPE == "energy":
+        return anneal_dsm_energy_estimation(network, samples, labels, sigmas, anneal_power, grad)
+    elif LOSS_TYPE == "score":
+        return anneal_dsm_score_estimation(network, samples, labels, sigmas, anneal_power, grad)
+
+
+
+
+def anneal_dsm_score_estimation(network, samples, labels, sigmas, anneal_power=2., grad=True):
+
+    REGULARISE_ENERGY = False 
+
     samples.requires_grad = True
     used_sigmas = sigmas[labels].view(samples.shape[0], *([1] * len(samples.shape[1:])))    
     perturbed_samples = samples + torch.randn_like(samples) * used_sigmas
@@ -35,10 +64,10 @@ def anneal_dsm_score_estimation(scorenet, samples, labels, sigmas, anneal_power=
     target = - 1 / (used_sigmas ** 2) * (perturbed_samples - samples)
 
     # Default NCSN
-    # scores = scorenet(perturbed_samples, labels)
+    # scores = network(perturbed_samples, labels)
 
     # Energy-NCSN
-    energy = scorenet(perturbed_samples, labels)
+    energy = network(perturbed_samples, labels)
     if grad:
         scores = autograd.grad(outputs=energy, inputs=perturbed_samples, grad_outputs=torch.ones_like(energy), retain_graph=True, create_graph=True)[0]
     else:
@@ -46,13 +75,19 @@ def anneal_dsm_score_estimation(scorenet, samples, labels, sigmas, anneal_power=
 
     target = target.view(target.shape[0], -1)
     scores = scores.view(scores.shape[0], -1)
-    loss = 1 / 2. * ((scores - target) ** 2).sum(dim=-1) * used_sigmas.squeeze() ** anneal_power
+
+    if REGULARISE_ENERGY:
+        # Regularise to get low energy values. Ensures consistency between the energy functions learnt for different noise levels
+        loss = 1 / 2. * ((scores - target) ** 2).sum(dim=-1) * used_sigmas.squeeze() ** anneal_power + torch.linalg.norm(energy, dim=1, ord=1)
+    
+    else:
+        loss = 1 / 2. * ((scores - target) ** 2).sum(dim=-1) * used_sigmas.squeeze() ** anneal_power
 
     return loss.mean(dim=0)
 
 
 
-def anneal_dsm_energy_estimation(scorenet, samples, labels, sigmas, anneal_power=2., grad=True):
+def anneal_dsm_energy_estimation(network, samples, labels, sigmas, anneal_power=2., grad=True):
 
     DIST_KERNEL = "gaussian" # options are "gaussian" or "uniform"
 
@@ -78,10 +113,10 @@ def anneal_dsm_energy_estimation(scorenet, samples, labels, sigmas, anneal_power
     
     # Energy-NCSN
     if grad:
-        energy = scorenet(perturbed_samples, labels)
+        energy = network(perturbed_samples, labels)
     else:
         with torch.no_grad():
-            energy = scorenet(perturbed_samples, labels)
+            energy = network(perturbed_samples, labels)
 
 
     target = target.view(target.shape[0], -1)
