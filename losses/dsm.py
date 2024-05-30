@@ -3,6 +3,7 @@ import torch.autograd as autograd
 import torch.nn.functional as F
 import numpy as np
 import matplotlib.pyplot as plt
+import copy
 
 def dsm(energy_net, samples, sigma=1):
     samples.requires_grad_(True)
@@ -56,7 +57,7 @@ def anneal_dsm_loss(network, samples, labels, sigmas, anneal_power=2., grad=True
 
 def anneal_dsm_score_estimation(network, samples, labels, sigmas, anneal_power=2., grad=True):
 
-    REGULARISE_ENERGY = False 
+    REGULARISE_ENERGY = True 
 
     samples.requires_grad = True
     used_sigmas = sigmas[labels].view(samples.shape[0], *([1] * len(samples.shape[1:])))    
@@ -161,7 +162,7 @@ def plot_energy_curve(network, samples):
     """Plot a curve with the average energy of a set of samples on the y-axis and the distance of the samples from the demo dataset on the x-axis
     """
     # Absolute values of the range [-r, r] of a uniform distribution from which demo data is perturbed
-    demo_sample_max_distances = np.linspace(1, 100, 100)
+    demo_sample_max_distances = np.linspace(0, 10, 100)
     labels_to_evaluate = [0,3,5,7,9]
 
     for noise_level in labels_to_evaluate:
@@ -169,14 +170,17 @@ def plot_energy_curve(network, samples):
         avg_energy = np.zeros_like(demo_sample_max_distances)
 
         for idx, max_dist in enumerate(demo_sample_max_distances):
-            perturbed_samples = samples + (max_dist -2*max_dist*torch.rand(samples.shape, device=samples.device))
+            if max_dist == 0.0:
+                perturbed_samples = copy.deepcopy(samples)
+            else:
+                perturbed_samples = copy.deepcopy(samples) + (max_dist -2*max_dist*torch.rand(samples.shape, device=samples.device))
             energy = network(perturbed_samples.to(torch.float), labels)
             avg_energy[idx] = energy.squeeze().mean()
 
         plt.figure(figsize=(8, 6))
         plt.plot(demo_sample_max_distances, avg_energy)
-        plt.xlabel("max perturbation r (sample = sample + unif[-r,r])")
-        plt.ylabel("avg energy")
+        plt.xlabel("max perturbation r (where sample = sample + unif[-r,r])")
+        plt.ylabel("avg energy E_theta(sample)")
         plt.title(f"Avg energy vs distance from demo data at sigma_level_{noise_level}")
         plt.show()
         

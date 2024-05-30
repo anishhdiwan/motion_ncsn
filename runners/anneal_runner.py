@@ -229,8 +229,6 @@ class AnnealRunner():
                 # logging.info("step: {}, loss: {}".format(step, loss.item()))
 
                 if step >= self.config.training.n_iters:
-                    # Temporary testing
-                    self.plot_energy_landscape(test_loader, score)
                     # Quit
                     return 0
 
@@ -282,8 +280,8 @@ class AnnealRunner():
         if self.config.data.dataset == 'Swiss-Roll':
             self.visualise_sr_energy()
         elif self.config.data.dataset == 'maze':
-            self.visualise_2d_energy()
-            # self.plot_energy_landscape()
+            # self.visualise_2d_energy()
+            self.plot_energy_landscape()
         elif self.config.data.dataset == 'humanoid':
             self.plot_energy_landscape()
 
