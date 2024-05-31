@@ -165,6 +165,10 @@ def plot_energy_curve(network, samples):
     demo_sample_max_distances = np.linspace(0, 10, 100)
     labels_to_evaluate = [0,3,5,7,9]
 
+    plt.figure(figsize=(8, 6))
+
+    energies = {}
+    
     for noise_level in labels_to_evaluate:
         labels = torch.full((samples.shape[0],), noise_level, device=samples.device)
         avg_energy = np.zeros_like(demo_sample_max_distances)
@@ -177,14 +181,42 @@ def plot_energy_curve(network, samples):
             energy = network(perturbed_samples.to(torch.float), labels)
             avg_energy[idx] = energy.squeeze().mean()
 
-        plt.figure(figsize=(8, 6))
-        plt.plot(demo_sample_max_distances, avg_energy)
-        plt.xlabel("max perturbation r (where sample = sample + unif[-r,r])")
-        plt.ylabel("avg energy E_theta(sample)")
-        plt.title(f"Avg energy vs distance from demo data at sigma_level_{noise_level}")
-        plt.show()
         
+        plt.plot(demo_sample_max_distances, avg_energy, label=f"sigma_level_{noise_level}")
+        energies[int(noise_level)] = np.flip(avg_energy, axis=0)
+    
+    
+    plt.legend()
+    plt.xlabel("max perturbation r (where sample = sample + unif[-r,r])")
+    plt.ylabel("avg energy E_theta(sample)")
+    plt.title(f"Avg energy vs distance from demo data")
+    plt.show()
+    
+    thresh = 1.0
+    combined_energy = np.zeros_like(demo_sample_max_distances)
+    current_level_idx = 0
+    current_min = 0
+    for i in range(len(demo_sample_max_distances)):  
+        if current_level_idx == len(labels_to_evaluate) - 1:
+            combined_energy[i] = current_min + energies[labels_to_evaluate[-1]][i]
+
+        else:
+
+            if energies[labels_to_evaluate[current_level_idx + 1]][i] < thresh:
+                combined_energy[i] = current_min + energies[labels_to_evaluate[current_level_idx]][i]
+            else:
+                current_min += energies[labels_to_evaluate[current_level_idx]][i]
+                current_level_idx += 1
+                combined_energy[i] = current_min + energies[labels_to_evaluate[current_level_idx]][i]
+                
 
 
+    plt.figure(figsize=(8, 6))
+    plt.plot(demo_sample_max_distances, np.flip(combined_energy, axis=0), label=f"annealed energies")
+    plt.legend()
+    plt.xlabel("max perturbation r (where sample = sample + unif[-r,r])")
+    plt.ylabel("avg energy E_theta(sample)")
+    plt.title(f"Avg energy vs distance from demo data")
+    plt.show()
 
 
