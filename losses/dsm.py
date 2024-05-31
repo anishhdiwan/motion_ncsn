@@ -163,7 +163,7 @@ def plot_energy_curve(network, samples):
     """
     # Absolute values of the range [-r, r] of a uniform distribution from which demo data is perturbed
     demo_sample_max_distances = np.linspace(0, 10, 100)
-    labels_to_evaluate = [0,3,5,7,9]
+    labels_to_evaluate = [0,1,2,3,4,5,6,7,8,9]
 
     plt.figure(figsize=(8, 6))
 
