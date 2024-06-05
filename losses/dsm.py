@@ -57,7 +57,7 @@ def anneal_dsm_loss(network, samples, labels, sigmas, anneal_power=2., grad=True
 
 def anneal_dsm_score_estimation(network, samples, labels, sigmas, anneal_power=2., grad=True):
 
-    REGULARISE_ENERGY = True 
+    REGULARISE_ENERGY = False 
 
     samples.requires_grad = True
     used_sigmas = sigmas[labels].view(samples.shape[0], *([1] * len(samples.shape[1:])))    
@@ -192,10 +192,10 @@ def plot_energy_curve(network, samples):
     plt.title(f"Avg energy vs distance from demo data")
     plt.show()
     
-    thresh = 1.0
     combined_energy = np.zeros_like(demo_sample_max_distances)
     current_level_idx = 0
     current_min = 0
+    thresh = 100.0 - labels_to_evaluate[current_level_idx]*10
     for i in range(len(demo_sample_max_distances)):  
         if current_level_idx == len(labels_to_evaluate) - 1:
             combined_energy[i] = current_min + energies[labels_to_evaluate[-1]][i]
@@ -207,6 +207,7 @@ def plot_energy_curve(network, samples):
             else:
                 current_min += energies[labels_to_evaluate[current_level_idx]][i]
                 current_level_idx += 1
+                thresh = 100.0 - labels_to_evaluate[current_level_idx]*10
                 combined_energy[i] = current_min + energies[labels_to_evaluate[current_level_idx]][i]
                 
 
