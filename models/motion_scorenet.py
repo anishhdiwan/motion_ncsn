@@ -189,9 +189,10 @@ class SimpleNet(nn.Module):
         decoder_hidden_layers (list): list of the number of neurons in the hidden layers of the decoder (in order of the layers)
     """
 
-    def __init__(self, config):
+    def __init__(self, config, in_dim):
         super().__init__()
-        self.in_dim = in_dim = config.model.in_dim * config.model.numObsSteps
+        # self.in_dim = in_dim = config.model.in_dim * config.model.numObsSteps
+        self.in_dim = in_dim
         # cond_dim = config.model.cond_dim
         encoder_hidden_layers = config.model.encoder_hidden_layers
         latent_space_dim = config.model.latent_space_dim

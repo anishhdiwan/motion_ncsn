@@ -91,6 +91,14 @@ class AnnealRunner():
         except AttributeError:
             self.normalize = False
 
+        if self.config.data.dataset != "humanoid":
+            assert self.config.model.encode_temporal_feature == False, "Temporal feature encoding is not yet implemented for ray based envs"
+
+        if self.config.model.encode_temporal_feature == True:
+            self.in_dim = (self.config.model.in_dim * self.config.model.numObsSteps) + 1
+        else:
+            self.in_dim = self.config.model.in_dim * self.config.model.numObsSteps
+
     def get_optimizer(self, parameters):
         if self.config.optim.optimizer == 'Adam':
             return optim.Adam(parameters, lr=self.config.optim.lr, weight_decay=self.config.optim.weight_decay,
@@ -109,11 +117,11 @@ class AnnealRunner():
     def train(self):
 
         if self.config.data.dataset == 'pushT':
-            motion_lib = GymMotionLib(self.config.data.motion_file, self.config.model.numObsSteps, self.config.model.in_dim, episodic=False, normalize=False, test_split=True)
+            motion_lib = GymMotionLib(self.config.data.motion_file, self.config.model.numObsSteps, self.in_dim, episodic=False, normalize=False, test_split=True)
             dataloader, test_loader = motion_lib.get_traj_agnostic_dataloader(batch_size=self.config.training.batch_size, shuffle=True)
 
         if self.config.data.dataset == 'maze':
-            motion_lib = GymMotionLib(self.config.data.motion_file, self.config.model.numObsSteps, self.config.model.in_dim, episodic=False, normalize=False, test_split=True, auto_ends=False)
+            motion_lib = GymMotionLib(self.config.data.motion_file, self.config.model.numObsSteps, self.in_dim, episodic=False, normalize=False, test_split=True, auto_ends=False)
             dataloader, test_loader = motion_lib.get_traj_agnostic_dataloader(batch_size=self.config.training.batch_size, shuffle=True)
 
         if self.config.data.dataset == 'humanoid':
@@ -129,13 +137,13 @@ class AnnealRunner():
             humanoid_cfg.sim.physx.num_subscenes = self.config.data.num_subscenes
             humanoid_cfg.sim.physx.use_gpu = self.config.data.use_gpu
 
-            motion_lib = HumanoidMotionLib(self.config.data.env_params.motion_file, humanoid_cfg, self.config.device)
+            motion_lib = HumanoidMotionLib(self.config.data.env_params.motion_file, humanoid_cfg, self.config.device, encode_temporal_feature=self.config.model.encode_temporal_feature)
             dataloader = motion_lib.get_dataloader(batch_size=self.config.training.batch_size, buffer_size=self.config.training.buffer_size, shuffle=True)
             test_loader = dataloader
 
         if self.normalize:
             # Standardization
-            self._running_mean_std = RunningMeanStd(torch.ones(self.config.model.in_dim * self.config.model.numObsSteps).shape).to(self.config.device)
+            self._running_mean_std = RunningMeanStd(torch.ones(self.in_dim).shape).to(self.config.device)
 
         if self.config.data.dataset == 'Swiss-Roll':
 
@@ -182,7 +190,7 @@ class AnnealRunner():
 
         tb_logger = tensorboardX.SummaryWriter(log_dir=tb_path)
         # score = DummyNet(self.config).to(self.config.device)
-        score = SimpleNet(self.config).to(self.config.device)
+        score = SimpleNet(self.config, in_dim=self.in_dim).to(self.config.device)
         score = torch.nn.DataParallel(score)
 
         optimizer = self.get_optimizer(score.parameters())
@@ -290,7 +298,7 @@ class AnnealRunner():
         """
 
         if self.config.data.dataset == 'maze':
-            motion_lib = GymMotionLib(self.config.data.motion_file, self.config.model.numObsSteps, self.config.model.in_dim, episodic=False, normalize=False, test_split=True, auto_ends=False)
+            motion_lib = GymMotionLib(self.config.data.motion_file, self.config.model.numObsSteps, self.in_dim, episodic=False, normalize=False, test_split=True, auto_ends=False)
             dataloader, test_loader = motion_lib.get_traj_agnostic_dataloader(batch_size=self.config.training.batch_size, shuffle=True)
 
         if self.config.data.dataset == 'humanoid':
@@ -306,13 +314,13 @@ class AnnealRunner():
             humanoid_cfg.sim.physx.num_subscenes = self.config.data.num_subscenes
             humanoid_cfg.sim.physx.use_gpu = self.config.data.use_gpu
 
-            motion_lib = HumanoidMotionLib(self.config.data.env_params.motion_file, humanoid_cfg, self.config.device)
+            motion_lib = HumanoidMotionLib(self.config.data.env_params.motion_file, humanoid_cfg, self.config.device, encode_temporal_feature=self.config.model.encode_temporal_feature)
             dataloader = motion_lib.get_dataloader(batch_size=self.config.training.batch_size, buffer_size=self.config.training.buffer_size, shuffle=True)
             test_loader = dataloader
 
 
-        if self.config.training.normalize_energynet_input:
-            running_mean_std = RunningMeanStd(torch.ones(self.config.model.in_dim * self.config.model.numObsSteps).shape).to(self.config.device)
+        if self.normalize:
+            running_mean_std = RunningMeanStd(torch.ones(self.in_dim).shape).to(self.config.device)
             running_mean_std_states = torch.load(self.config.inference.running_mean_std_checkpoint, map_location=self.config.device)
             running_mean_std.load_state_dict(running_mean_std_states)
             running_mean_std.eval()
@@ -322,7 +330,7 @@ class AnnealRunner():
 
         device = self.config.device
         states = torch.load(self.config.inference.eb_model_checkpoint, map_location=self.config.device)
-        network = SimpleNet(self.config).to(self.config.device)
+        network = SimpleNet(self.config, in_dim=self.in_dim).to(self.config.device)
         network = torch.nn.DataParallel(network)
         network.load_state_dict(states[0])
         network.eval()
@@ -357,7 +365,7 @@ class AnnealRunner():
         """
         device = self.config.device
         states = torch.load(self.config.inference.eb_model_checkpoint, map_location=self.config.device)
-        score = SimpleNet(self.config).to(self.config.device)
+        score = SimpleNet(self.config, in_dim=self.in_dim).to(self.config.device)
         score = torch.nn.DataParallel(score)
         score.load_state_dict(states[0])
         score.eval()
@@ -371,8 +379,8 @@ class AnnealRunner():
         window_idx_left = int((kernel_size - 1)/2)
         window_idx_right = int((kernel_size + 1)/2)
 
-        if self.config.training.normalize_energynet_input:
-            running_mean_std = RunningMeanStd(torch.ones(self.config.model.in_dim * self.config.model.numObsSteps).shape).to(self.config.device)
+        if self.normalize:
+            running_mean_std = RunningMeanStd(torch.ones(self.in_dim).shape).to(self.config.device)
             running_mean_std_states = torch.load(self.config.inference.running_mean_std_checkpoint, map_location=self.config.device)
             running_mean_std.load_state_dict(running_mean_std_states)
             running_mean_std.eval()
@@ -434,7 +442,7 @@ class AnnealRunner():
         """
         device = self.config.device
         states = torch.load(self.config.inference.eb_model_checkpoint, map_location=self.config.device)
-        score = SimpleNet(self.config).to(self.config.device)
+        score = SimpleNet(self.config, in_dim=self.config.model.in_dim).to(self.config.device)
         score = torch.nn.DataParallel(score)
         score.load_state_dict(states[0])
         score.eval()
@@ -443,7 +451,7 @@ class AnnealRunner():
         colormask = self.config.visualise.colormask
         plot_train_data = self.config.visualise.plot_train_data
 
-        if self.config.training.normalize_energynet_input:
+        if self.normalize:
             running_mean_std = RunningMeanStd(torch.ones(self.config.model.in_dim).shape).to(self.config.device)
             running_mean_std_states = torch.load(self.config.inference.running_mean_std_checkpoint, map_location=self.config.device)
             running_mean_std.load_state_dict(running_mean_std_states)
@@ -509,7 +517,7 @@ class AnnealRunner():
                 sr_points = dataset[:]
                 sr_points = sr_points.to(self.config.device)
 
-                if self.config.training.normalize_energynet_input:
+                if self.normalize:
                     sr_points = running_mean_std(sr_points)
                     sr_points = sr_points.cpu().detach().numpy()
 
