@@ -95,8 +95,10 @@ class AnnealRunner():
             assert self.config.model.encode_temporal_feature == False, "Temporal feature encoding is not yet implemented for ray based envs"
 
         if self.config.model.encode_temporal_feature == True:
-            self.in_dim = (self.config.model.in_dim * self.config.model.numObsSteps) + self.config.model.temporal_emb_dim*self.config.model.numObsSteps
+            self.temporal_emb_dim = self.config.model.temporal_emb_dim
+            self.in_dim = (self.config.model.in_dim * self.config.model.numObsSteps) + self.temporal_emb_dim*self.config.model.numObsSteps
         else:
+            self.temporal_emb_dim = None
             self.in_dim = self.config.model.in_dim * self.config.model.numObsSteps
 
     def get_optimizer(self, parameters):
@@ -137,7 +139,7 @@ class AnnealRunner():
             humanoid_cfg.sim.physx.num_subscenes = self.config.data.num_subscenes
             humanoid_cfg.sim.physx.use_gpu = self.config.data.use_gpu
 
-            motion_lib = HumanoidMotionLib(self.config.data.env_params.motion_file, humanoid_cfg, self.config.device, encode_temporal_feature=self.config.model.encode_temporal_feature)
+            motion_lib = HumanoidMotionLib(self.config.data.env_params.motion_file, humanoid_cfg, self.config.device, encode_temporal_feature=self.config.model.encode_temporal_feature, temporal_emb_dim=self.temporal_emb_dim)
             dataloader = motion_lib.get_dataloader(batch_size=self.config.training.batch_size, buffer_size=self.config.training.buffer_size, shuffle=True)
             test_loader = dataloader
 
@@ -314,7 +316,7 @@ class AnnealRunner():
             humanoid_cfg.sim.physx.num_subscenes = self.config.data.num_subscenes
             humanoid_cfg.sim.physx.use_gpu = self.config.data.use_gpu
 
-            motion_lib = HumanoidMotionLib(self.config.data.env_params.motion_file, humanoid_cfg, self.config.device, encode_temporal_feature=self.config.model.encode_temporal_feature)
+            motion_lib = HumanoidMotionLib(self.config.data.env_params.motion_file, humanoid_cfg, self.config.device, encode_temporal_feature=self.config.model.encode_temporal_feature, temporal_emb_dim=self.temporal_emb_dim)
             dataloader = motion_lib.get_dataloader(batch_size=self.config.training.batch_size, buffer_size=self.config.training.buffer_size, shuffle=True)
             test_loader = dataloader
 
