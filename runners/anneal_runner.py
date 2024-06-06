@@ -95,7 +95,7 @@ class AnnealRunner():
             assert self.config.model.encode_temporal_feature == False, "Temporal feature encoding is not yet implemented for ray based envs"
 
         if self.config.model.encode_temporal_feature == True:
-            self.in_dim = (self.config.model.in_dim * self.config.model.numObsSteps) + 1
+            self.in_dim = (self.config.model.in_dim * self.config.model.numObsSteps) + self.config.model.numObsSteps
         else:
             self.in_dim = self.config.model.in_dim * self.config.model.numObsSteps
 
