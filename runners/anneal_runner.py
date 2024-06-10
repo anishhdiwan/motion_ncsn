@@ -95,7 +95,9 @@ class AnnealRunner():
             assert self.config.model.encode_temporal_feature == False, "Temporal feature encoding is not yet implemented for ray based envs"
 
         if self.config.model.encode_temporal_feature == True:
-            self.temporal_emb_dim = self.config.model.temporal_emb_dim
+            self.temporal_emb_dim = self.config.model.get('temporal_emb_dim', None)
+            assert self.temporal_emb_dim != None, "A temporal embedding dim must be provided if encoding temporal features"
+
             self.in_dim = (self.config.model.in_dim * self.config.model.numObsSteps) + self.temporal_emb_dim*self.config.model.numObsSteps
         else:
             self.temporal_emb_dim = None
