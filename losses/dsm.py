@@ -4,6 +4,8 @@ import torch.nn.functional as F
 import numpy as np
 import matplotlib.pyplot as plt
 import copy
+import os
+import pickle
 
 def dsm(energy_net, samples, sigma=1):
     samples.requires_grad_(True)
@@ -158,7 +160,7 @@ def compute_anneal_dsm_energies(network, samples, sigmas, perturbation):
 
     return avg_energy
 
-def plot_energy_curve(network, samples):
+def plot_energy_curve(network, samples, checkpoint_pth=None):
     """Plot a curve with the average energy of a set of samples on the y-axis and the distance of the samples from the demo dataset on the x-axis
     """
     # Absolute values of the range [-r, r] of a uniform distribution from which demo data is perturbed
@@ -213,11 +215,23 @@ def plot_energy_curve(network, samples):
 
 
     plt.figure(figsize=(8, 6))
-    plt.plot(demo_sample_max_distances, np.flip(combined_energy, axis=0), label=f"annealed energies")
+    combined_energy = np.flip(combined_energy, axis=0)
+    plt.plot(demo_sample_max_distances, combined_energy, label=f"annealed energies")
     plt.legend()
     plt.xlabel("max perturbation r (where sample = sample + unif[-r,r])")
     plt.ylabel("avg energy E_theta(sample)")
     plt.title(f"Avg energy vs distance from demo data")
     plt.show()
+
+
+    # save data
+    if checkpoint_pth != None:
+        learnt_function_path = os.path.splitext(checkpoint_pth)[0] + '_learnt_fn.pkl'
+        data = {'annealed_energy': combined_energy, 'nc_energies': energies, 'max_sample_perturbation': demo_sample_max_distances}
+
+        with open(learnt_function_path, 'wb') as handle:
+            pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+        print("saved learnt function data")
 
 

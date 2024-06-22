@@ -355,7 +355,7 @@ class AnnealRunner():
         test_X = test_X.to(self.config.device)
         if self.normalize:
             test_X = running_mean_std(test_X)
-        plot_energy_curve(network, test_X)
+        plot_energy_curve(network, test_X, checkpoint_pth=self.config.inference.eb_model_checkpoint)
 
 
     def visualise_2d_energy(self):
