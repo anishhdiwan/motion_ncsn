@@ -1,6 +1,6 @@
 # Noise Conditioned Score Networks for Motion Trajectories
 
-This repo contains an implementation of [Generative Modeling by Estimating Gradients of the Data Distribution](https://arxiv.org/abs/1907.05600) modified for use with imitation learning algorithms like diffusion motion priors. The underlying algorithm is the same as in the original repo. It is however modified for use with demonstration motion data.
+This repo contains an implementation of [Generative Modeling by Estimating Gradients of the Data Distribution](https://arxiv.org/abs/1907.05600) modified for use with imitation learning algorithms like noise conditioned energy based annealed rewards. The underlying algorithm is the same as in the original repo. It is however modified for use with demonstration motion data.
 
 
 
