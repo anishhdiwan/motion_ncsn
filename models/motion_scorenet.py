@@ -204,11 +204,20 @@ class SimpleNet(nn.Module):
         self.embed = SinusoidalPosEmb(latent_space_dim)
         self.decoder = nn.Sequential(*[LatentSpaceTf(latent_space_dim, decoder_hidden_layers, 1), nn.ELU()])
 
+        if config.param_init == "xavier_uniform":
+            self.encoder.apply(self.init_weights)
+            self.embed.apply(self.init_weights)
+            self.decoder.apply(self.init_weights)
+
+
+    def init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            torch.nn.init.xavier_uniform_(m.weight)
+            m.bias.data.fill_(0.01)
+
 
     def forward(self, x, cond):
-        # out = self.conditionalBN(x, cond)
         out = self.encoder(x)
-        # out = self.conditional_instance_norm(out, cond)
         out = out + self.embed(cond)
         energy = self.decoder(out)
 
