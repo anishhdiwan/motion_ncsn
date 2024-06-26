@@ -204,7 +204,7 @@ class SimpleNet(nn.Module):
         self.embed = SinusoidalPosEmb(latent_space_dim)
         self.decoder = nn.Sequential(*[LatentSpaceTf(latent_space_dim, decoder_hidden_layers, 1), nn.ELU()])
 
-        if config.param_init == "xavier_uniform":
+        if config.optim.param_init == "xavier_uniform":
             self.encoder.apply(self.init_weights)
             self.embed.apply(self.init_weights)
             self.decoder.apply(self.init_weights)
