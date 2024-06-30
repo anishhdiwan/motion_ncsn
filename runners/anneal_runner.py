@@ -36,6 +36,7 @@ from PIL import Image
 
 # Standardization using RunningMeanStd (compute running mean and stdevs during training and transform data with the latest values)
 from rl_games.algos_torch.running_mean_std import RunningMeanStd
+from models.ema import EMAHelper
 
 
 __all__ = ['AnnealRunner']
@@ -205,12 +206,15 @@ class AnnealRunner():
         #     score.load_state_dict(states[0])
         #     optimizer.load_state_dict(states[1])
 
+        if self.config.model.ema:
+            print("Keeping track of the EMA model weights")
+            ema_helper = EMAHelper(mu=self.config.model.ema_rate)
+            ema_helper.register(score)
+
         step = 0
         sigmas = torch.tensor(
             np.exp(np.linspace(np.log(self.config.model.sigma_begin), np.log(self.config.model.sigma_end),
                                self.config.model.L))).float().to(self.config.device)
-
-
 
         for epoch in range(self.config.training.n_epochs):
             avg_loss = 0
@@ -239,6 +243,9 @@ class AnnealRunner():
                     nn.utils.clip_grad_norm_(score.parameters(), self.config.optim.grad_clip_norm)
                 optimizer.step()
 
+                if self.config.model.ema:
+                    ema_helper.update(score)
+
                 tb_logger.add_scalar('loss', loss, global_step=step)
                 avg_loss += loss.item()
                 # logging.info("step: {}, loss: {}".format(step, loss.item()))
@@ -248,6 +255,7 @@ class AnnealRunner():
                     return 0
 
                 if step % 100 == 0:
+
                     score.eval()
                     try:
                         test_X = next(test_iter)
@@ -260,26 +268,27 @@ class AnnealRunner():
                     if self.normalize:
                         test_X = self._running_mean_std(test_X)
 
-                    # if self.config.data.logit_transform:
-                    #     test_X = self.logit_transform(test_X)
-
                     test_labels = torch.randint(0, len(sigmas), (test_X.shape[0],), device=test_X.device)
-                    # test_labels = test_y.to(test_X.device)
 
                     # with torch.no_grad():
                     # Instead of setting no_grad, explicitly compute scores as gradients without adding to the graph
                     test_dsm_loss, test_energies = anneal_dsm_loss(score, test_X, test_labels, sigmas,
                                                                     self.config.training.anneal_power, grad=False)
 
-                    tb_logger.add_scalar('test_dsm_loss', test_dsm_loss, global_step=step)
+                    # tb_logger.add_scalar('test_dsm_loss', test_dsm_loss, global_step=step)
                     for k, v in test_energies.items():
                         tb_logger.add_scalar(f'demo_data_energy/{k}', v, global_step=step)
+                    
 
                 if step % self.config.training.snapshot_freq == 0:
                     states = [
                         score.state_dict(),
                         optimizer.state_dict(),
                     ]
+
+                    if self.config.model.ema:
+                        states.append(ema_helper.state_dict())
+
                     torch.save(states, os.path.join(self.args.log, 'checkpoint_{}.pth'.format(step)))
                     torch.save(states, os.path.join(self.args.log, 'checkpoint.pth'))
                     
@@ -340,6 +349,14 @@ class AnnealRunner():
         network = SimpleNet(self.config, in_dim=self.in_dim).to(self.config.device)
         network = torch.nn.DataParallel(network)
         network.load_state_dict(states[0])
+
+        if self.config.model.ema:
+            print("Using EMA model weights")
+            ema_helper = EMAHelper(mu=self.config.model.ema_rate)
+            ema_helper.register(network)
+            ema_helper.load_state_dict(states[-1])
+            ema_helper.ema(network)
+        
         network.eval()
 
         test_iter = iter(test_loader)

@@ -193,6 +193,7 @@ class SimpleNet(nn.Module):
         super().__init__()
         # self.in_dim = in_dim = config.model.in_dim * config.model.numObsSteps
         self.in_dim = in_dim
+        self.config = config
         # cond_dim = config.model.cond_dim
         encoder_hidden_layers = config.model.encoder_hidden_layers
         latent_space_dim = config.model.latent_space_dim
