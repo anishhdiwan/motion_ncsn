@@ -167,13 +167,16 @@ def plot_energy_curve(network, samples, checkpoint_pth=None):
     demo_sample_max_distances = np.linspace(0, 10, 100)
     labels_to_evaluate = [0,1,2,3,4,5,6,7,8,9]
 
-    plt.figure(figsize=(8, 6))
+    plt.figure(1, figsize=(8, 6))
+    plt.figure(2, figsize=(8, 6))
 
     energies = {}
+    energy_stds = {}
     
     for noise_level in labels_to_evaluate:
         labels = torch.full((samples.shape[0],), noise_level, device=samples.device)
         avg_energy = np.zeros_like(demo_sample_max_distances)
+        std_energy = np.zeros_like(demo_sample_max_distances)
 
         for idx, max_dist in enumerate(demo_sample_max_distances):
             if max_dist == 0.0:
@@ -182,17 +185,30 @@ def plot_energy_curve(network, samples, checkpoint_pth=None):
                 perturbed_samples = copy.deepcopy(samples) + (max_dist -2*max_dist*torch.rand(samples.shape, device=samples.device))
             energy = network(perturbed_samples.to(torch.float), labels)
             avg_energy[idx] = energy.squeeze().mean()
+            std_energy[idx] = energy.squeeze().std()
 
-        
+        plt.figure(1)
         plt.plot(demo_sample_max_distances, avg_energy, label=f"sigma_level_{noise_level}")
+        plt.figure(2)
+        plt.plot(demo_sample_max_distances, std_energy, label=f"sigma_level_{noise_level}")
+
         energies[int(noise_level)] = np.flip(avg_energy, axis=0)
+        energy_stds[int(noise_level)] = np.flip(std_energy, axis=0)
     
-    
+    plt.figure(1)
     plt.legend()
     plt.xlabel("max perturbation r (where sample = sample + unif[-r,r])")
     plt.ylabel("avg energy E_theta(sample)")
     plt.title(f"Avg energy vs distance from demo data")
+
+    plt.figure(2)
+    plt.legend()
+    plt.xlabel("max perturbation r (where sample = sample + unif[-r,r])")
+    plt.ylabel("std energy E_theta(sample)")
+    plt.title(f"std energy vs distance from demo data")
+
     plt.show()
+
     
     combined_energy = np.zeros_like(demo_sample_max_distances)
     current_level_idx = 0
@@ -227,7 +243,7 @@ def plot_energy_curve(network, samples, checkpoint_pth=None):
     # save data
     if checkpoint_pth != None:
         learnt_function_path = os.path.splitext(checkpoint_pth)[0] + '_learnt_fn.pkl'
-        data = {'annealed_energy': combined_energy, 'nc_energies': energies, 'max_sample_perturbation': demo_sample_max_distances}
+        data = {'annealed_energy': combined_energy, 'nc_energies': energies, 'nc_energy_stdev':energy_stds, 'max_sample_perturbation': demo_sample_max_distances}
 
         with open(learnt_function_path, 'wb') as handle:
             pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)
