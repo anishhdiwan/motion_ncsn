@@ -81,16 +81,28 @@ def anneal_dsm_score_estimation(network, samples, labels, sigmas, anneal_power=2
     scores = scores.view(scores.shape[0], -1)
 
     if REGULARISE_ENERGY:
-        loss = 1 / 2. * ((scores - target) ** 2).sum(dim=-1) * used_sigmas.squeeze() ** anneal_power + torch.linalg.norm(energy, dim=1, ord=1)
+        # L = len(sigmas)
+        # var_loss = 0
+        # for i in range(L):
+        #     mask_i = labels == i
+        #     energy_i = energy[mask_i]
+        #     var_i = energy_i.squeeze().var()
+        #     if not torch.isnan(var_i):
+        #         var_loss += var_i  
+
+        loss = 1 / 2. * ((scores - target) ** 2).sum(dim=-1) * used_sigmas.squeeze() ** anneal_power
+        loss = loss.mean(dim=0)
+        loss = loss + 0.2*energy.squeeze().var()
     
     else:
         loss = 1 / 2. * ((scores - target) ** 2).sum(dim=-1) * used_sigmas.squeeze() ** anneal_power
+        loss = loss.mean(dim=0)
 
     if grad:
-        return loss.mean(dim=0)
+        return loss
     else:
         test_set_energies = compute_anneal_dsm_energies(network, samples, sigmas, perturbation="gaussian")
-        return loss.mean(dim=0), test_set_energies
+        return loss, test_set_energies
 
 
 

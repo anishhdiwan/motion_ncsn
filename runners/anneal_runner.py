@@ -285,7 +285,7 @@ class AnnealRunner():
                     
                     standardization_states = self._running_mean_std.state_dict()
                     torch.save(standardization_states, os.path.join(self.args.log, 'running_mean_std.pth'))
-
+            
             print(f"Epoch {epoch} Avg Loss: {avg_loss/len(dataloader)}")
             # logging.info(f"Epoch {epoch} Avg Loss: {avg_loss/len(dataloader)}")
 
