@@ -59,7 +59,7 @@ def anneal_dsm_loss(network, samples, labels, sigmas, anneal_power=2., grad=True
 
 def anneal_dsm_score_estimation(network, samples, labels, sigmas, anneal_power=2., grad=True):
 
-    REGULARISE_ENERGY = False 
+    REGULARISE_ENERGY = True 
 
     samples.requires_grad = True
     used_sigmas = sigmas[labels].view(samples.shape[0], *([1] * len(samples.shape[1:])))    
@@ -92,7 +92,7 @@ def anneal_dsm_score_estimation(network, samples, labels, sigmas, anneal_power=2
 
         loss = 1 / 2. * ((scores - target) ** 2).sum(dim=-1) * used_sigmas.squeeze() ** anneal_power
         loss = loss.mean(dim=0)
-        loss = loss + 0.2*energy.squeeze().var()
+        loss = loss + 0.5*energy.squeeze().var()
     
     else:
         loss = 1 / 2. * ((scores - target) ** 2).sum(dim=-1) * used_sigmas.squeeze() ** anneal_power

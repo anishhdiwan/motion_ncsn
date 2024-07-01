@@ -212,9 +212,17 @@ class AnnealRunner():
             ema_helper.register(score)
 
         step = 0
+
+        # Geometric Schedule
+        # sigmas = torch.tensor(
+        #     np.exp(np.linspace(np.log(self.config.model.sigma_begin), np.log(self.config.model.sigma_end),
+        #                        self.config.model.L))).float().to(self.config.device)
+
+
+        # Uniform Schedule
         sigmas = torch.tensor(
-            np.exp(np.linspace(np.log(self.config.model.sigma_begin), np.log(self.config.model.sigma_end),
-                               self.config.model.L))).float().to(self.config.device)
+                np.linspace(self.config.model.sigma_begin, self.config.model.sigma_end, self.config.model.L)
+                ).float().to(self.config.device)
 
         for epoch in range(self.config.training.n_epochs):
             avg_loss = 0
