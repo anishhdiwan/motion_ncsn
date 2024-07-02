@@ -59,7 +59,7 @@ def anneal_dsm_loss(network, samples, labels, sigmas, anneal_power=2., grad=True
 
 def anneal_dsm_score_estimation(network, samples, labels, sigmas, anneal_power=2., grad=True):
 
-    REGULARISE_ENERGY = True 
+    REGULARISE_ENERGY = False 
 
     samples.requires_grad = True
     used_sigmas = sigmas[labels].view(samples.shape[0], *([1] * len(samples.shape[1:])))    
@@ -71,7 +71,7 @@ def anneal_dsm_score_estimation(network, samples, labels, sigmas, anneal_power=2
     # scores = network(perturbed_samples, labels)
 
     # Energy-NCSN
-    energy = network(perturbed_samples, labels)
+    energy = network(perturbed_samples, used_sigmas)
     if grad:
         scores = autograd.grad(outputs=energy, inputs=perturbed_samples, grad_outputs=torch.ones_like(energy), retain_graph=True, create_graph=True)[0]
     else:
@@ -155,11 +155,11 @@ def anneal_dsm_energy_estimation(network, samples, labels, sigmas, anneal_power=
 def compute_anneal_dsm_energies(network, samples, sigmas, perturbation):
     """Compute the average energy of the samples for multiple label values
     """
-    labels_to_evaluate = [0,3,5,7,9]
+    labels_to_evaluate = [0, 10, 15, 25, 35, 45]
     avg_energy = {}
     for noise_level in labels_to_evaluate:
         labels = torch.full((samples.shape[0],), noise_level, device=samples.device)
-        # used_sigmas = sigmas[labels].view(samples.shape[0], *([1] * len(samples.shape[1:])))
+        used_sigmas = sigmas[labels].view(samples.shape[0], *([1] * len(samples.shape[1:])))
 
         # if perturbation == "gaussian":
         #     perturbed_samples = samples + torch.randn_like(samples) * used_sigmas
@@ -167,17 +167,17 @@ def compute_anneal_dsm_energies(network, samples, sigmas, perturbation):
         #     perturbed_samples = samples + ((1 - 2*torch.rand(samples.shape, device=samples.device)) * used_sigmas)
         
         # perturbed_samples = perturbed_samples.to(torch.float)
-        energy = network(samples.to(torch.float), labels)
+        energy = network(samples.to(torch.float), used_sigmas)
         avg_energy[f"sigma_level_{noise_level}"] = energy.squeeze().mean()
 
     return avg_energy
 
-def plot_energy_curve(network, samples, checkpoint_pth=None):
+def plot_energy_curve(network, samples, sigmas, checkpoint_pth=None):
     """Plot a curve with the average energy of a set of samples on the y-axis and the distance of the samples from the demo dataset on the x-axis
     """
     # Absolute values of the range [-r, r] of a uniform distribution from which demo data is perturbed
     demo_sample_max_distances = np.linspace(0, 10, 100)
-    labels_to_evaluate = [0,1,2,3,4,5,6,7,8,9]
+    labels_to_evaluate = [0, 5, 10, 15, 20, 25]
 
     plt.figure(1, figsize=(8, 6))
     plt.figure(2, figsize=(8, 6))
@@ -187,6 +187,8 @@ def plot_energy_curve(network, samples, checkpoint_pth=None):
     
     for noise_level in labels_to_evaluate:
         labels = torch.full((samples.shape[0],), noise_level, device=samples.device)
+        used_sigmas = sigmas[labels].view(samples.shape[0], *([1] * len(samples.shape[1:])))
+        print(f"label {labels[0]} sigma val {used_sigmas[0]}")
         avg_energy = np.zeros_like(demo_sample_max_distances)
         std_energy = np.zeros_like(demo_sample_max_distances)
 
@@ -195,7 +197,7 @@ def plot_energy_curve(network, samples, checkpoint_pth=None):
                 perturbed_samples = copy.deepcopy(samples)
             else:
                 perturbed_samples = copy.deepcopy(samples) + (max_dist -2*max_dist*torch.rand(samples.shape, device=samples.device))
-            energy = network(perturbed_samples.to(torch.float), labels)
+            energy = network(perturbed_samples.to(torch.float), used_sigmas)
             avg_energy[idx] = energy.squeeze().mean()
             std_energy[idx] = energy.squeeze().std()
 

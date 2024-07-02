@@ -219,8 +219,9 @@ class SimpleNet(nn.Module):
 
     def forward(self, x, cond):
         out = self.encoder(x)
-        out = out + self.embed(cond)
+        # out = out + self.embed(cond)
         energy = self.decoder(out)
+        energy = energy/cond
 
         
         return energy
