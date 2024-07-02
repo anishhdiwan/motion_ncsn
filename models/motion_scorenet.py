@@ -194,6 +194,12 @@ class SimpleNet(nn.Module):
         # self.in_dim = in_dim = config.model.in_dim * config.model.numObsSteps
         self.in_dim = in_dim
         self.config = config
+        
+        if self.config.model.get('ncsnv2', False):
+            self.ncsn_version = 'ncsnv2'
+        else:
+            self.ncsn_version = 'ncsnv1'
+
         # cond_dim = config.model.cond_dim
         encoder_hidden_layers = config.model.encoder_hidden_layers
         latent_space_dim = config.model.latent_space_dim
@@ -218,11 +224,17 @@ class SimpleNet(nn.Module):
 
 
     def forward(self, x, cond):
-        out = self.encoder(x)
-        # out = out + self.embed(cond)
-        energy = self.decoder(out)
-        energy = energy/cond
-
+        if self.ncsn_version == 'ncsnv2':
+            cond = cond['used_sigmas']
+            out = self.encoder(x)
+            # out = out + self.embed(cond)
+            energy = self.decoder(out)
+            energy = energy/cond
+        elif self.ncsn_version == 'ncsnv1':
+            ond = cond['labels']
+            out = self.encoder(x)
+            out = out + self.embed(cond)
+            energy = self.decoder(out)
         
         return energy
 

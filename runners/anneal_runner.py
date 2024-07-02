@@ -105,6 +105,10 @@ class AnnealRunner():
             self.temporal_emb_dim = None
             self.in_dim = self.config.model.in_dim * self.config.model.numObsSteps
 
+        # Labels to use to evaluate the learnt model
+        self.eval_labels = [i for i in range(self.config.model.L) if i % int(self.config.model.L*0.2) == 0]
+        self.eval_labels.append(self.config.model.L - 1)
+
     def get_optimizer(self, parameters):
         if self.config.optim.optimizer == 'Adam':
             return optim.Adam(parameters, lr=self.config.optim.lr, weight_decay=self.config.optim.weight_decay,
@@ -212,17 +216,7 @@ class AnnealRunner():
             ema_helper.register(score)
 
         step = 0
-
-        # Geometric Schedule
-        sigmas = torch.tensor(
-            np.exp(np.linspace(np.log(self.config.model.sigma_begin), np.log(self.config.model.sigma_end),
-                               self.config.model.L))).float().to(self.config.device)
-
-
-        # Uniform Schedule
-        # sigmas = torch.tensor(
-        #         np.linspace(self.config.model.sigma_begin, self.config.model.sigma_end, self.config.model.L)
-        #         ).float().to(self.config.device)
+        sigmas = self.get_sigmas()
 
         for epoch in range(self.config.training.n_epochs):
             avg_loss = 0
@@ -240,7 +234,7 @@ class AnnealRunner():
                 labels = torch.randint(0, len(sigmas), (X.shape[0],), device=X.device)
 
                 if self.config.training.algo == 'dsm':
-                    loss = anneal_dsm_loss(score, X, labels, sigmas, self.config.training.anneal_power)
+                    loss = anneal_dsm_loss(score, X, labels, sigmas, self.eval_labels, self.config.training.anneal_power)
                 elif self.config.training.algo == 'ssm':
                     loss = anneal_sliced_score_estimation_vr(score, X, labels, sigmas,
                                                              n_particles=self.config.training.n_particles)
@@ -280,7 +274,7 @@ class AnnealRunner():
 
                     # with torch.no_grad():
                     # Instead of setting no_grad, explicitly compute scores as gradients without adding to the graph
-                    test_dsm_loss, test_energies = anneal_dsm_loss(score, test_X, test_labels, sigmas,
+                    test_dsm_loss, test_energies = anneal_dsm_loss(score, test_X, test_labels, sigmas, self.eval_labels,
                                                                     self.config.training.anneal_power, grad=False)
 
                     # tb_logger.add_scalar('test_dsm_loss', test_dsm_loss, global_step=step)
@@ -306,6 +300,20 @@ class AnnealRunner():
             print(f"Epoch {epoch} Avg Loss: {avg_loss/len(dataloader)}")
             # logging.info(f"Epoch {epoch} Avg Loss: {avg_loss/len(dataloader)}")
 
+
+    def get_sigmas(self):
+        if self.config.model.get('ncsnv2', False):
+            # Geometric Schedule
+            sigmas = torch.tensor(
+                np.exp(np.linspace(np.log(self.config.model.sigma_begin), np.log(self.config.model.sigma_end),
+                                self.config.model.L))).float().to(self.config.device)
+        else:
+            # Uniform Schedule
+            sigmas = torch.tensor(
+                    np.linspace(self.config.model.sigma_begin, self.config.model.sigma_end, self.config.model.L)
+                    ).float().to(self.config.device)
+
+        return sigmas
 
 
     def visualise_energy(self):
@@ -384,10 +392,8 @@ class AnnealRunner():
         if self.normalize:
             test_X = running_mean_std(test_X)
 
-        sigmas = torch.tensor(
-        np.exp(np.linspace(np.log(self.config.model.sigma_begin), np.log(self.config.model.sigma_end),
-                            self.config.model.L))).float().to(self.config.device)
-        plot_energy_curve(network, test_X, sigmas, checkpoint_pth=self.config.inference.eb_model_checkpoint)
+        sigmas = self.get_sigmas()
+        plot_energy_curve(network, test_X, sigmas, labels_to_evaluate=self.eval_labels, checkpoint_pth=self.config.inference.eb_model_checkpoint)
 
 
     def visualise_2d_energy(self):
@@ -424,8 +430,7 @@ class AnnealRunner():
             print(f"EnergyNet was trained using normalised inputs. Data mean {running_mean_std.running_mean} Data var {running_mean_std.running_var}")
 
 
-        sigmas = np.exp(np.linspace(np.log(self.config.model.sigma_begin), np.log(self.config.model.sigma_end),
-                                    self.config.model.L))
+        sigmas = self.get(sigmas)
         print(f"Sigma levels {[(i,val.item()) for i,val in enumerate(sigmas)]}")
 
         xs = torch.linspace(viz_min, viz_max, steps=grid_steps)
@@ -450,9 +455,11 @@ class AnnealRunner():
 
                     obs_pairs = obs_pairs.reshape(-1,4)
                     labels = torch.ones(obs_pairs.shape[0], device=grid_points.device) * c # c ranges from [0,L-1]
+                    used_sigmas = sigmas[labels].view(obs_pairs.shape[0], *([1] * len(obs_pairs.shape[1:])))
+                    perturbation_levels = {'labels':labels, 'used_sigmas':used_sigmas}
                     
                     obs_pairs = running_mean_std(obs_pairs)
-                    energy = score(obs_pairs, labels)
+                    energy = score(obs_pairs, perturbation_levels)
                     mean_energy = torch.mean(energy).item()
                     energy_grid[i,j] = mean_energy
 
@@ -511,8 +518,7 @@ class AnnealRunner():
         # if not os.path.exists(self.args.image_folder):
         #     os.makedirs(self.args.image_folder)
 
-        sigmas = np.exp(np.linspace(np.log(self.config.model.sigma_begin), np.log(self.config.model.sigma_end),
-                                    self.config.model.L))
+        sigmas = self.get_sigmas()
         print(f"Sigma levels {[(i,val) for i,val in enumerate(sigmas)]}")
 
 
@@ -527,9 +533,10 @@ class AnnealRunner():
             
             grid_points = torch.cat((x.flatten().view(-1, 1),y.flatten().view(-1,1)), 1).to(device=self.config.device)
             labels = torch.ones(grid_points.shape[0], device=grid_points.device) * c # c ranges from [0,L-1]
+            used_sigmas = sigmas[labels].view(grid_points.shape[0], *([1] * len(grid_points.shape[1:])))
+            perturbation_levels = {'labels':labels, 'used_sigmas':used_sigmas}
 
-
-            energy = score(grid_points, labels)
+            energy = score(grid_points, perturbation_levels)
             energy = energy.reshape(-1,x.shape[0])
 
             if plot3d:
