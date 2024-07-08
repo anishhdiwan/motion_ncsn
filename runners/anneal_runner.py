@@ -285,7 +285,7 @@ class AnnealRunner():
                 if step % self.config.training.snapshot_freq == 0:
                     states = [
                         score.state_dict(),
-                        optimizer.state_dict(),
+                        # optimizer.state_dict(),
                     ]
 
                     if self.config.model.ema:
