@@ -231,7 +231,7 @@ class SimpleNet(nn.Module):
             energy = self.decoder(out)
             energy = energy/cond
         elif self.ncsn_version == 'ncsnv1':
-            ond = cond['labels']
+            cond = cond['labels']
             out = self.encoder(x)
             out = out + self.embed(cond)
             energy = self.decoder(out)
