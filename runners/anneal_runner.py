@@ -43,6 +43,7 @@ __all__ = ['AnnealRunner']
 
 from sklearn import datasets
 import matplotlib.pyplot as plt
+plt.rcParams['text.usetex'] = True
 
 
 class SwissRollDataset(torch.utils.data.Dataset):
@@ -253,6 +254,20 @@ class AnnealRunner():
                 # logging.info("step: {}, loss: {}".format(step, loss.item()))
 
                 if step >= self.config.training.n_iters:
+                    # Save
+                    states = [
+                        score.state_dict(),
+                        # optimizer.state_dict(),
+                    ]
+
+                    if self.config.model.ema:
+                        states.append(ema_helper.state_dict())
+
+                    torch.save(states, os.path.join(self.args.log, 'checkpoint.pth'))
+                    
+                    standardization_states = self._running_mean_std.state_dict()
+                    torch.save(standardization_states, os.path.join(self.args.log, 'running_mean_std.pth'))
+
                     # Quit
                     return 0
 
@@ -320,8 +335,8 @@ class AnnealRunner():
         if self.config.data.dataset == 'Swiss-Roll':
             self.visualise_sr_energy()
         elif self.config.data.dataset == 'maze':
-            # self.visualise_2d_energy()
-            self.plot_energy_landscape()
+            self.visualise_2d_energy()
+            # self.plot_energy_landscape()
         elif self.config.data.dataset == 'humanoid':
             self.plot_energy_landscape()
 
@@ -417,7 +432,7 @@ class AnnealRunner():
         viz_max = 512
         c = self.config.inference.sigma_level # c ranges from [0,L-1]
         kernel_size = 3 # must be odd
-        grid_steps = 128
+        grid_steps = 256
         window_idx_left = int((kernel_size - 1)/2)
         window_idx_right = int((kernel_size + 1)/2)
 
@@ -430,7 +445,7 @@ class AnnealRunner():
             print(f"EnergyNet was trained using normalised inputs. Data mean {running_mean_std.running_mean} Data var {running_mean_std.running_var}")
 
 
-        sigmas = self.get(sigmas)
+        sigmas = self.get_sigmas()
         print(f"Sigma levels {[(i,val.item()) for i,val in enumerate(sigmas)]}")
 
         xs = torch.linspace(viz_min, viz_max, steps=grid_steps)
@@ -454,7 +469,8 @@ class AnnealRunner():
                     obs_pairs = torch.cat((window, grid_pt_window), 2)
 
                     obs_pairs = obs_pairs.reshape(-1,4)
-                    labels = torch.ones(obs_pairs.shape[0], device=grid_points.device) * c # c ranges from [0,L-1]
+
+                    labels = torch.full((obs_pairs.shape[0],), c, device=obs_pairs.device)
                     used_sigmas = sigmas[labels].view(obs_pairs.shape[0], *([1] * len(obs_pairs.shape[1:])))
                     perturbation_levels = {'labels':labels, 'used_sigmas':used_sigmas}
                     
@@ -465,14 +481,23 @@ class AnnealRunner():
 
         energy_grid = energy_grid.reshape(-1,x.shape[0])
 
+        energy_grid = energy_grid[kernel_size+1 : -kernel_size-1, kernel_size+1 : -kernel_size-1]
+        x = x[kernel_size+1 : -kernel_size-1, kernel_size+1 : -kernel_size-1]
+        y = y[kernel_size+1 : -kernel_size-1, kernel_size+1 : -kernel_size-1]
+
         if colormask:
             plt.figure(figsize=(8, 6))
-            mesh = plt.pcolormesh(x.cpu().cpu().detach().numpy(), y.cpu().detach().numpy(), energy_grid.cpu().detach().numpy(), cmap ='gray')
+            mesh = plt.pcolormesh(x.cpu().cpu().detach().numpy(), y.cpu().detach().numpy(), energy_grid.cpu().detach().numpy(), cmap ='bone')
             plt.gca().invert_yaxis()
+            plt.locator_params(axis='x', nbins=6)
+            plt.locator_params(axis='y', nbins=6)
             plt.xlabel("env - x")
             plt.ylabel("env - y")
             plt.title(f"Maze Env E(s,s' | c={c}) | Mean energy in agent's reachable set")
+            # plt.text(350, 90, r"NCSN $\sigma = 0.001$", fontsize = 15, fontweight='bold', color='#42d4f4')
             plt.colorbar(mesh)
+            plt.tight_layout()
+            # plt.savefig(f"/home/anishdiwan/thesis_background/IsaacGymEnvs/isaacgymenvs/maze_env_ncsnv2.png", format="png", bbox_inches="tight", dpi=300)
 
 
         plt.show()
