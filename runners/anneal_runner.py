@@ -335,8 +335,8 @@ class AnnealRunner():
         if self.config.data.dataset == 'Swiss-Roll':
             self.visualise_sr_energy()
         elif self.config.data.dataset == 'maze':
-            self.visualise_2d_energy()
-            # self.plot_energy_landscape()
+            # self.visualise_2d_energy()
+            self.plot_energy_landscape()
         elif self.config.data.dataset == 'humanoid':
             self.plot_energy_landscape()
 
