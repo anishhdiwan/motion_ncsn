@@ -4,13 +4,14 @@ import torch
 from functools import partial
 import math
 from learning.motion_ncsn.models.ema import EMAHelper
-from isaacgymenvs.tasks.amp.humanoid_amp_base import NUM_OBS
+from isaacgymenvs.tasks.amp.humanoid_amp_base import NUM_OBS, NUM_FEATURES, UPPER_BODY_MASK, LOWER_BODY_MASK
 from isaacgymenvs.tasks.humanoid_amp import build_amp_observations
 from omegaconf import OmegaConf
 from isaacgymenvs.tasks.amp.utils_amp.motion_lib import MotionLib
 import os
 import numpy as np
 from rl_games.algos_torch.running_mean_std import RunningMeanStd
+from copy import deepcopy
 
 class SinusoidalPosEmb(nn.Module):
     def __init__(self, dim, steps=100):
@@ -196,23 +197,27 @@ class SimpleNet(nn.Module):
         decoder_hidden_layers (list): list of the number of neurons in the hidden layers of the decoder (in order of the layers)
     """
 
-    def __init__(self, config, in_dim):
+    def __init__(self, config, in_dim, feature_mask_type=None):
         super().__init__()
         # self.in_dim = in_dim = config.model.in_dim * config.model.numObsSteps
         self.in_dim = in_dim
         self.config = config
+
+        # If not directly provided then look in cfg
+        if feature_mask_type is None:
+            self.feature_mask_type = self.config.model.get('feature_mask', None)
+        else:
+            self.feature_mask_type = feature_mask_type
+        self.get_mask(self.feature_mask_type)
         
         if self.config.model.get('ncsnv2', False):
             self.ncsn_version = 'ncsnv2'
         else:
             self.ncsn_version = 'ncsnv1'
 
-        # cond_dim = config.model.cond_dim
         encoder_hidden_layers = config.model.encoder_hidden_layers
         latent_space_dim = config.model.latent_space_dim
         decoder_hidden_layers = config.model.decoder_hidden_layers
-        # L = number of sigma levels
-        # self.L = config.model.L
 
         self.encoder = LatentSpaceTf(in_dim, encoder_hidden_layers, latent_space_dim)
         self.embed = SinusoidalPosEmb(latent_space_dim)
@@ -231,6 +236,9 @@ class SimpleNet(nn.Module):
 
 
     def forward(self, x, cond):
+        if not self.feature_mask_type == None:
+            x = x.masked_fill((~self.feature_mask).to(device=x.device), 0.0)
+
         if self.ncsn_version == 'ncsnv2':
             cond = cond['used_sigmas']
             out = self.encoder(x)
@@ -246,6 +254,55 @@ class SimpleNet(nn.Module):
         return energy
 
 
+    def get_mask(self, mask_type):
+
+        pos_features_dict, vel_features_dict = deepcopy(NUM_FEATURES), deepcopy(NUM_FEATURES)
+        pos_features_dict["num_features"] = [i*2 if i==3 else i for i in pos_features_dict["num_features"]]
+
+        if mask_type is None:
+            self.feature_mask = torch.ones(210, dtype=torch.bool)
+        elif mask_type == "upper_body":
+            root_mask = torch.ones(13, dtype=torch.bool)
+            dof_pos_mask = self.create_mask(pos_features_dict, UPPER_BODY_MASK)
+            dof_vel_mask = self.create_mask(vel_features_dict, UPPER_BODY_MASK)
+            hand_body_mask = torch.ones(6, dtype=torch.bool)
+            leg_body_mask = torch.zeros(6, dtype=torch.bool)
+            feature_mask = torch.cat([root_mask, dof_pos_mask, dof_vel_mask, hand_body_mask, leg_body_mask])
+            self.feature_mask = torch.cat([feature_mask, feature_mask])
+        elif mask_type == "lower_body":
+            root_mask = torch.ones(13, dtype=torch.bool)
+            dof_pos_mask = self.create_mask(pos_features_dict, LOWER_BODY_MASK)
+            dof_vel_mask = self.create_mask(vel_features_dict, LOWER_BODY_MASK)
+            hand_body_mask = torch.zeros(6, dtype=torch.bool)
+            leg_body_mask = torch.ones(6, dtype=torch.bool)
+            feature_mask = torch.cat([root_mask, dof_pos_mask, dof_vel_mask, hand_body_mask, leg_body_mask])
+            self.feature_mask = torch.cat([feature_mask, feature_mask])
+
+
+    def create_mask(self, features_dict, masked_joints):
+    
+        # Initialize an empty mask with False values of size sum of num_features
+        total_features = sum(features_dict['num_features'])
+        mask = torch.zeros(total_features, dtype=torch.bool)
+        
+        # Initialize a starting index
+        start_idx = 0
+        
+        # Iterate over the dof_names and num_features
+        for i, joint in enumerate(features_dict['dof_names']):
+            # Get the number of features for the current joint
+            num_feat = features_dict['num_features'][i]
+            
+            # If the joint is in the upper body mask, set corresponding indices to True
+            if joint in masked_joints:
+                mask[start_idx:start_idx + num_feat] = True
+            
+            # Update the starting index for the next joint
+            start_idx += num_feat
+
+        return mask
+
+
 class ComposedEnergyNet():
     def __init__(self, config, checkpoints, normalisation_checkpoints, device, in_dim_space, use_ema, ema_rate=None, scale_energies=False, env=None):
 
@@ -254,6 +311,9 @@ class ComposedEnergyNet():
         self.config = config
         self.energy_function_weights = [1/len(checkpoints)]*len(checkpoints)
         self.motion_styles = list(checkpoints.keys())
+        feature_mask_types = self.config["inference"].get("composed_feature_mask", None)
+        if feature_mask_types == None:
+            feature_mask_types = [None]*len(checkpoints)
         
         for norm_checkpoint in list(normalisation_checkpoints.values()):
             norm_net= RunningMeanStd(in_dim_space).to(device)
@@ -263,9 +323,9 @@ class ComposedEnergyNet():
             self.norm_networks.append(norm_net)
 
 
-        for checkpoint in list(checkpoints.values()):
+        for idx, checkpoint in enumerate(list(checkpoints.values())):
             eb_model_states = torch.load(checkpoint, map_location=device)
-            energynet = SimpleNet(self.config, in_dim=in_dim_space[0]).to(device)
+            energynet = SimpleNet(self.config, in_dim=in_dim_space[0], feature_mask_type=feature_mask_types[idx]).to(device)
             energynet = torch.nn.DataParallel(energynet)
             energynet.load_state_dict(eb_model_states[0])
 
