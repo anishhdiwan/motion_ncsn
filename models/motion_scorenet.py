@@ -10,6 +10,7 @@ from omegaconf import OmegaConf
 from isaacgymenvs.tasks.amp.utils_amp.motion_lib import MotionLib
 import os
 import numpy as np
+from rl_games.algos_torch.running_mean_std import RunningMeanStd
 
 class SinusoidalPosEmb(nn.Module):
     def __init__(self, dim, steps=100):
@@ -246,16 +247,25 @@ class SimpleNet(nn.Module):
 
 
 class ComposedEnergyNet():
-    def __init__(self, config, checkpoints, device, in_dim, use_ema, ema_rate=None, scale_energies=False, env=None):
+    def __init__(self, config, checkpoints, normalisation_checkpoints, device, in_dim_space, use_ema, ema_rate=None, scale_energies=False, env=None):
 
         self.energy_networks = []
+        self.norm_networks = []
         self.config = config
         self.energy_function_weights = [1/len(checkpoints)]*len(checkpoints)
         self.motion_styles = list(checkpoints.keys())
+        
+        for norm_checkpoint in list(normalisation_checkpoints.values()):
+            norm_net= RunningMeanStd(in_dim_space).to(device)
+            energynet_input_norm_states = torch.load(norm_checkpoint, map_location=device)
+            norm_net.load_state_dict(energynet_input_norm_states)
+            norm_net.eval()
+            self.norm_networks.append(norm_net)
+
 
         for checkpoint in list(checkpoints.values()):
             eb_model_states = torch.load(checkpoint, map_location=device)
-            energynet = SimpleNet(self.config, in_dim=in_dim).to(device)
+            energynet = SimpleNet(self.config, in_dim=in_dim_space[0]).to(device)
             energynet = torch.nn.DataParallel(energynet)
             energynet.load_state_dict(eb_model_states[0])
 
@@ -293,10 +303,10 @@ class ComposedEnergyNet():
         output = None
 
         for idx, energynet in enumerate(self.energy_networks):
-            if output == None:
-                output = energy_function_weights[idx]*self.energy_function_scaling[idx]*energynet(x, cond)
+            if output is None:
+                output = energy_function_weights[idx]*self.energy_function_scaling[idx]*energynet(self.norm_networks[idx](x), cond)
             else:
-                output += energy_function_weights[idx]*self.energy_function_scaling[idx]*energynet(x, cond)
+                output += energy_function_weights[idx]*self.energy_function_scaling[idx]*energynet(self.norm_networks[idx](x), cond)
 
         return output
 
