@@ -503,7 +503,7 @@ class AnnealRunner():
         plt.rcParams.update({'font.size': fontsize})
         if colormask:
             plt.figure(figsize=(8, 6))
-            mesh = plt.pcolormesh(x.cpu().cpu().detach().numpy(), y.cpu().detach().numpy(), energy_grid.cpu().detach().numpy(), cmap ='bone')
+            mesh = plt.pcolormesh(x.cpu().cpu().detach().numpy(), y.cpu().detach().numpy(), energy_grid.cpu().detach().numpy(), cmap ='Blues')
             plt.locator_params(axis='x', nbins=6)
             plt.locator_params(axis='y', nbins=6)
             # plt.gca().set_xticks([])
@@ -515,7 +515,7 @@ class AnnealRunner():
             plt.gca().set_xlim(left=0, right=512)
             plt.gca().set_ylim(bottom=0, top=512)
             plt.gca().invert_yaxis()
-            # plt.text(300, 90, r"\textbf{NCSN} $\mathbf{\sigma}$ \textbf{= 20.0}", fontsize = fontsize, fontweight='bold', color='#42d4f4')
+            # plt.text(300, 90, r"\textbf{NCSN} $\mathbf{\sigma}$ \textbf{= 20.0}", fontsize = fontsize, fontweight='bold', color='#000000', backgroundcolor='white')
             plt.colorbar(mesh)
             plt.tight_layout()
             # plt.savefig(f"/home/anishdiwan/thesis_background/IsaacGymEnvs/isaacgymenvs/maze_env_ncsnv2.png", format="png", bbox_inches="tight", dpi=300)
