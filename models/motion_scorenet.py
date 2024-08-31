@@ -208,6 +208,10 @@ class SimpleNet(nn.Module):
             self.feature_mask_type = self.config.model.get('feature_mask', None)
         else:
             self.feature_mask_type = feature_mask_type
+        
+        if self.feature_mask_type == "None":
+            self.feature_mask_type = None
+
         self.get_mask(self.feature_mask_type)
         
         if self.config.model.get('ncsnv2', False):
@@ -312,7 +316,7 @@ class ComposedEnergyNet():
         self.energy_function_weights = [1/len(checkpoints)]*len(checkpoints)
         self.motion_styles = list(checkpoints.keys())
         feature_mask_types = self.config["inference"].get("composed_feature_mask", None)
-        if feature_mask_types == None:
+        if (feature_mask_types == None) or (feature_mask_types == "None"):
             feature_mask_types = [None]*len(checkpoints)
         
         for norm_checkpoint in list(normalisation_checkpoints.values()):
