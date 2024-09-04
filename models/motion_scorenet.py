@@ -308,7 +308,7 @@ class SimpleNet(nn.Module):
 
 
 class ComposedEnergyNet():
-    def __init__(self, config, checkpoints, normalisation_checkpoints, device, in_dim_space, use_ema, ema_rate=None, scale_energies=False, env=None):
+    def __init__(self, config, checkpoints, normalisation_checkpoints, device, in_dim_space, use_ema, ema_rate=None, scale_energies=False, env=None, keep_motion_libs=False):
 
         self.energy_networks = []
         self.norm_networks = []
@@ -348,7 +348,8 @@ class ComposedEnergyNet():
             assert env is not None, "And env must be passed to compute scaling parameters"
             self.init_motion_sampling(env, device)
             self.energy_function_scaling = self.get_energy_function_scaling(device)
-            self.free_memory()
+            if not keep_motion_libs:
+                self.free_memory()
         else:
             self.energy_function_scaling = np.ones_like(self.energy_function_weights)
 
